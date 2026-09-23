@@ -32,7 +32,26 @@ check "install output is idempotent" bash -c 'bash "$1" >/dev/null && [ "$(cat "
 check "shortcuts are thin wrappers" grep -q 'bin/light-agent.* explore "\$@"' "$HOME/.local/bin/lme"
 check "no symlinks after install" test -z "$(find "$HOME" -type l)"
 
+# --- constitutions ---
+con="$HOME/.light-agents"
+for m in explore live adhoc; do
+  check "install places $m.md" cmp -s "$repo/constitutions/$m.md" "$con/$m.md"
+  check "$m.md states its role boundary" bash -c 'grep -q "^## Role boundary" "$1" && grep -q "^\*\*You do:\*\*" "$1" && grep -q "^\*\*You must not:\*\*" "$1"' _ "$con/$m.md"
+done
+check "constitutions avoid mat lifecycle and proprietary terms" \
+  bash -c '! grep -niE "mat (live|explore|duo|adhoc)|supervisor|relay|baton|tmux|auto-refine|shuke" "$@"' _ "$repo"/constitutions/*.md
+out="$(bash "$repo/install.sh")"
+check "reinstall reports constitutions unchanged" test "$(grep -c '^unchanged ' <<<"$out")" -eq 3
+check "reinstall makes no backups" test -z "$(find "$con" -name '*.bak')"
+echo "my edit" >> "$con/live.md"
+out="$(bash "$repo/install.sh")"
+check "modified constitution is backed up" bash -c 'tail -n1 "$1" | grep -qx "my edit"' _ "$con/live.md.bak"
+check "modified constitution is refreshed" cmp -s "$repo/constitutions/live.md" "$con/live.md"
+check "overwrite prints notice naming backup" grep -qF "saved to $con/live.md.bak" <<<"$out"
+rm -f "$con/live.md.bak"
+
 # --- missing constitution ---
+rm -f "$con/explore.md"
 out="$("$HOME/.local/bin/lme" 2>&1)"; rc=$?
 check "missing constitution exits non-zero" test "$rc" -ne 0
 check "missing constitution names path" grep -qF "$HOME/.light-agents/explore.md" <<<"$out"
