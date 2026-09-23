@@ -12,6 +12,16 @@ wrapper that execs `bin/light-agent` from this checkout by absolute path — a g
 not a symlink. Re-running `install.sh` is safe and overwrites them in place; re-run it after
 moving the checkout.
 
+It also installs the three constitutions from `constitutions/` into `~/.light-agents/`:
+
+- missing: copied in (`installed <path>`);
+- identical to the repo copy: left alone (`unchanged <path>`);
+- different (you edited it, or the repo copy changed): the existing file is saved to
+  `<mode>.md.bak`, the repo copy is installed, and a `notice:` line names the backup.
+
+To keep a local edit, merge it back from the `.bak` after re-installing, or edit
+`constitutions/<mode>.md` in your checkout instead.
+
 Requires `bash` (Windows Git Bash works) and Claude Code (`claude`) on `PATH`.
 
 ## Commands
@@ -42,7 +52,15 @@ Any arguments given to `lme`/`lml`/`lma` are appended to the `claude` invocation
 
 `~/.light-agents/<mode>.md` (`explore.md`, `live.md`, `adhoc.md`) is one self-contained
 Markdown file per mode. It becomes that mode's user-level `CLAUDE.md`. There is no
-composition or shared-snippet layer.
+composition or shared-snippet layer; the three files repeat each other on purpose.
+
+| mode      | role                                                                 |
+|-----------|----------------------------------------------------------------------|
+| `explore` | investigates and writes tickets; does not write delivery code        |
+| `live`    | hands-on generalist: implements, tests, commits in the working repo  |
+| `adhoc`   | executes one operator-given task end to end, then stops              |
+
+Each file has a `## Role boundary` section stating what the mode does and must not do.
 
 ## Tests
 
