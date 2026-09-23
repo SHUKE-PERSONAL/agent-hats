@@ -96,5 +96,89 @@ check "claude missing message" grep -q "claude not found on PATH" <<<"$out"
 "$repo/bin/light-agent" bogus >/dev/null 2>&1; rc=$?
 check "unknown mode exits non-zero" test "$rc" -ne 0
 
+# --- copilot kind ---
+cat > "$tmp/stub/copilot" <<'STUB'
+#!/usr/bin/env bash
+{ echo "COPILOT_HOME=$COPILOT_HOME"
+  echo "COPILOT_SETUP_TERMINAL=$COPILOT_SETUP_TERMINAL"
+  echo "COPILOT_GITHUB_TOKEN=$COPILOT_GITHUB_TOKEN"
+  for a in "$@"; do echo "ARG=$a"; done
+} > "$HOME/copilot.log"
+STUB
+chmod +x "$tmp/stub/copilot"
+unset COPILOT_GITHUB_TOKEN GH_TOKEN GITHUB_TOKEN LIGHT_AGENT_KIND
+export COPILOT_GITHUB_TOKEN=github_pat_fine
+cop="$HOME/.mat-agent-home/lme-copilot"
+work="$tmp/work"; mkdir -p "$work"
+trust_dir="$work"; command -v cygpath >/dev/null 2>&1 && trust_dir="$(cygpath -w "$work")"
+config_body() { grep -v '^[[:space:]]*//' "$cop/config.json"; }
+
+rm -f "$HOME/claude.log"
+(cd "$work" && "$HOME/.local/bin/lme" --kind copilot --foo "two words"); rc=$?
+check "--kind copilot exits 0" test "$rc" -eq 0
+check "--kind copilot does not launch claude" test ! -e "$HOME/claude.log"
+check "copilot home is lme-copilot" grep -qxF "COPILOT_HOME=$cop" "$HOME/copilot.log"
+check "constitution installed as copilot-instructions.md" grep -qx v2 "$cop/copilot-instructions.md"
+check "copilot home has no CLAUDE.md" test ! -e "$cop/CLAUDE.md"
+check "COPILOT_SETUP_TERMINAL=false exported" grep -qx "COPILOT_SETUP_TERMINAL=false" "$HOME/copilot.log"
+check "token exported" grep -qx "COPILOT_GITHUB_TOKEN=github_pat_fine" "$HOME/copilot.log"
+expected_args="ARG=--yolo
+ARG=--model
+ARG=gpt-5.5
+ARG=--effort
+ARG=medium
+ARG=--foo
+ARG=two words"
+check "copilot defaults then passthrough args" test "$(grep '^ARG=' "$HOME/copilot.log")" = "$expected_args"
+check "cwd seeded into trustedFolders" bash -c 'grep -v "^[[:space:]]*//" "$1" | jq -e --arg d "$2" ".trustedFolders == [\$d]" >/dev/null' _ "$cop/config.json" "$trust_dir"
+(cd "$work" && "$HOME/.local/bin/lme" --kind=copilot); rc=$?
+check "--kind=copilot form works" test "$rc" -eq 0
+check "trust seeding is idempotent" test "$(config_body | jq '.trustedFolders | length')" -eq 1
+
+# existing Copilot-managed config: header comments and other keys survive
+printf '// This file is managed automatically.\n{\n  "loggedInUsers": [1],\n  "trustedFolders": ["X:\\\\other"]\n}\n' > "$cop/config.json"
+(cd "$work" && "$HOME/.local/bin/lme" --kind copilot)
+check "config header comment kept" grep -qx '// This file is managed automatically.' "$cop/config.json"
+check "config keys kept and cwd appended" bash -c 'grep -v "^[[:space:]]*//" "$1" | jq -e --arg d "$2" ".loggedInUsers == [1] and .trustedFolders == [\"X:\\\\other\", \$d]" >/dev/null' _ "$cop/config.json" "$trust_dir"
+
+rm -f "$HOME/copilot.log"
+LIGHT_AGENT_KIND=copilot "$HOME/.local/bin/lml"; rc=$?
+check "LIGHT_AGENT_KIND=copilot launches copilot" grep -qxF "COPILOT_HOME=$HOME/.mat-agent-home/lml-copilot" "$HOME/copilot.log"
+rm -f "$HOME/claude.log"
+LIGHT_AGENT_KIND=copilot "$HOME/.local/bin/lml" --kind claude
+check "--kind wins over LIGHT_AGENT_KIND" grep -qxF "CLAUDE_CONFIG_DIR=$HOME/.mat-agent-home/lml-claude" "$HOME/claude.log"
+rm -f "$HOME/claude.log"
+"$HOME/.local/bin/lme"
+check "bare lme still launches claude" grep -qxF "CLAUDE_CONFIG_DIR=$cfg" "$HOME/claude.log"
+
+out="$("$HOME/.local/bin/lme" --kind gemini 2>&1)"; rc=$?
+check "unknown kind exits non-zero" test "$rc" -ne 0
+check "unknown kind names accepted values" grep -qF "accepted values: claude, copilot" <<<"$out"
+out="$(LIGHT_AGENT_KIND=bogus "$HOME/.local/bin/lme" 2>&1)"; rc=$?
+check "unknown LIGHT_AGENT_KIND exits non-zero" test "$rc" -ne 0
+
+# token resolution
+rm -f "$HOME/copilot.log"
+out="$(COPILOT_GITHUB_TOKEN=ghp_classic "$HOME/.local/bin/lme" --kind copilot 2>&1)"; rc=$?
+check "classic PAT exits non-zero" test "$rc" -ne 0
+check "classic PAT names the reason" grep -qF "classic PAT" <<<"$out"
+check "classic PAT does not launch copilot" test ! -e "$HOME/copilot.log"
+out="$(COPILOT_GITHUB_TOKEN= GH_TOKEN=ghp_classic "$HOME/.local/bin/lme" --kind copilot 2>&1)"; rc=$?
+check "classic PAT in GH_TOKEN is refused" bash -c '[ "$1" -ne 0 ] && grep -qF "GH_TOKEN holds a classic PAT" <<<"$2"' _ "$rc" "$out"
+out="$(COPILOT_GITHUB_TOKEN= "$HOME/.local/bin/lme" --kind copilot 2>&1)"; rc=$?
+check "missing token exits non-zero" test "$rc" -ne 0
+check "missing token names the variable" grep -qF "COPILOT_GITHUB_TOKEN" <<<"$out"
+check "missing token does not launch copilot" test ! -e "$HOME/copilot.log"
+printf '#!/usr/bin/env bash\n[ "$*" = "auth token" ] && echo gho_oauth\n' > "$tmp/stub/gh"; chmod +x "$tmp/stub/gh"
+COPILOT_GITHUB_TOKEN= "$HOME/.local/bin/lme" --kind copilot
+check "gh auth token fallback" grep -qx "COPILOT_GITHUB_TOKEN=gho_oauth" "$HOME/copilot.log"
+rm -f "$tmp/stub/gh"
+
+# copilot missing
+rm -f "$tmp/stub/copilot"
+out="$("$HOME/.local/bin/lme" --kind copilot 2>&1)"; rc=$?
+check "copilot missing exits non-zero" test "$rc" -ne 0
+check "copilot missing message" grep -q "copilot not found on PATH" <<<"$out"
+
 echo
 [ "$fails" -eq 0 ] && echo "all tests passed" || { echo "$fails test(s) failed"; exit 1; }
