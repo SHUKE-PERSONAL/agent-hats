@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# light-agent <mode> [claude args...]
+# Provision the per-mode config home, install the mode's constitution as its
+# CLAUDE.md, and exec Claude Code. Extra args pass through to claude.
+set -euo pipefail
+
+die() { printf 'light-agent: %s\n' "$*" >&2; exit 1; }
+
+mode="${1:-}"
+case "$mode" in
+  explore) prefix=lme ;;
+  live)    prefix=lml ;;
+  adhoc)   prefix=lma ;;
+  *) die "usage: light-agent <explore|live|adhoc> [claude args...]" ;;
+esac
+shift
+
+src="$HOME/.light-agents/$mode.md"
+[ -f "$src" ] || die "constitution not found: $src"
+
+command -v claude >/dev/null 2>&1 || die "claude not found on PATH"
+
+home="$HOME/.mat-agent-home/$prefix-claude"
+mkdir -p "$home"
+# Copy (never symlink) on every launch so source edits apply on next start.
+cp -f "$src" "$home/CLAUDE.md"
+
+export CLAUDE_CONFIG_DIR="$home"
+export CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000
+exec claude '--model=opus[1m]' --effort medium --dangerously-skip-permissions "$@"
