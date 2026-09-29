@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# light-agent <mode> [--kind <claude|copilot>] [agent args...]
+# light-agent <mode> [--kind K] [--backend NICK] [--model M] [--effort E] [agent args...]
 # Provision the per-mode, per-kind config home, install the mode's
 # constitution as the kind's prompt file, and exec the agent CLI. Extra args
-# pass through to the agent. The kind defaults to $LIGHT_AGENT_KIND, then
-# claude; --kind wins over the variable.
+# pass through to the agent. Each option falls back to its LIGHT_AGENT_*
+# variable; the flag wins over the variable.
 set -euo pipefail
 
-die() { printf 'light-agent: %s\n' "$*" >&2; exit 1; }
+die()  { printf 'light-agent: %s\n' "$*" >&2; exit 1; }
+warn() { printf 'light-agent: %s\n' "$*" >&2; }
 
-usage="usage: light-agent <explore|live|adhoc> [--kind <claude|copilot>] [agent args...]"
+usage="usage: light-agent <explore|live|adhoc> [--kind <claude|copilot>] [--backend <nickname>] [--model <model>] [--effort <effort>] [agent args...]"
 mode="${1:-}"
 case "$mode" in
   explore) prefix=lme ;;
@@ -18,16 +19,73 @@ case "$mode" in
 esac
 shift
 
-# --kind is recognised only as the first argument after the mode, which is
-# where `lme --kind copilot` puts it; everything after passes through.
-kind="${LIGHT_AGENT_KIND:-claude}"
-case "${1:-}" in
-  --kind)   [ $# -ge 2 ] || die "--kind needs a value; accepted values: claude, copilot"; kind="$2"; shift 2 ;;
-  --kind=*) kind="${1#--kind=}"; shift ;;
-esac
+# Launcher options are recognised only before the first agent argument, which
+# is where `lme --kind copilot` puts them; everything from there passes through.
+kind="${LIGHT_AGENT_KIND:-}"
+backend="${LIGHT_AGENT_BACKEND:-}"
+model="${LIGHT_AGENT_MODEL:-}"
+effort="${LIGHT_AGENT_EFFORT:-}"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --kind|--backend|--model|--effort)
+      [ $# -ge 2 ] || { [ "$1" = --kind ] && die "--kind needs a value; accepted values: claude, copilot"; die "$1 needs a value"; }
+      printf -v "${1#--}" '%s' "$2"; shift 2 ;;
+    --kind=*|--backend=*|--model=*|--effort=*)
+      opt="${1%%=*}"; printf -v "${opt#--}" '%s' "${1#*=}"; shift ;;
+    *) break ;;
+  esac
+done
 case "$kind" in
-  claude|copilot) ;;
+  ''|claude|copilot) ;;
   *) die "unknown kind '$kind'; accepted values: claude, copilot" ;;
+esac
+
+# A backend nickname is looked up in light-agents' own table, then mat's;
+# only nickname, kind, default_model and default_effort are read. Both files
+# are optional and read-only: without jq, or with no readable table, the
+# built-in defaults apply. A nickname missing from every readable table is an
+# error.
+if [ -n "$backend" ]; then
+  tables=0 entry=""
+  if ! command -v jq >/dev/null 2>&1; then
+    warn "jq not found; backend '$backend' not resolved, using built-in defaults"
+  else
+    for table in "$HOME/.light-agents/backends.json" "$HOME/.config/mat/backends.json"; do
+      [ -e "$table" ] || continue
+      if ! jq -e '.backends | type == "array"' "$table" >/dev/null 2>&1; then
+        warn "ignoring unreadable or malformed $table"
+        continue
+      fi
+      tables=$((tables + 1))
+      # tr: native jq on Windows emits CRLF.
+      entry="$(jq -r --arg n "$backend" 'first(.backends[] | objects | select(.nickname == $n))
+        | (.kind // ""), (.default_model // ""), (.default_effort // "")' "$table" 2>/dev/null | tr -d '\r')" || entry=""
+      [ -n "$entry" ] && break
+    done
+    if [ -n "$entry" ]; then
+      { read -r entry_kind; read -r entry_model; read -r entry_effort; } <<<"$entry" || true  # $(...) drops trailing empty fields
+      if [ -n "$entry_kind" ]; then
+        case "$entry_kind" in
+          claude|copilot) ;;
+          *) die "backend '$backend' has kind '$entry_kind'; accepted values: claude, copilot" ;;
+        esac
+        [ -z "$kind" ] || [ "$kind" = "$entry_kind" ] \
+          || die "backend '$backend' has kind '$entry_kind', but kind '$kind' was requested"
+        kind="$entry_kind"
+      fi
+      [ -n "$model" ]  || model="$entry_model"
+      [ -n "$effort" ] || effort="$entry_effort"
+    elif [ "$tables" -gt 0 ]; then
+      die "unknown backend '$backend': not found in ~/.light-agents/backends.json or ~/.config/mat/backends.json"
+    else
+      warn "no readable backends.json; backend '$backend' not resolved, using built-in defaults"
+    fi
+  fi
+fi
+kind="${kind:-claude}"
+case "$kind" in
+  claude)  : "${model:=opus[1m]}" "${effort:=medium}" ;;
+  copilot) : "${model:=gpt-5.5}" "${effort:=medium}" ;;
 esac
 
 src="$HOME/.light-agents/$mode.md"
@@ -88,7 +146,7 @@ case "$kind" in
     cp -f "$src" "$home/CLAUDE.md"
     export CLAUDE_CONFIG_DIR="$home"
     export CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000
-    exec claude '--model=opus[1m]' --effort medium --dangerously-skip-permissions "$@"
+    exec claude "--model=$model" --effort "$effort" --dangerously-skip-permissions "$@"
     ;;
   copilot)
     token="$(copilot_token)" || exit 1
@@ -98,6 +156,6 @@ case "$kind" in
     export COPILOT_HOME="$home"
     export COPILOT_SETUP_TERMINAL=false
     export COPILOT_GITHUB_TOKEN="$token"
-    exec copilot --yolo --model gpt-5.5 --effort medium "$@"
+    exec copilot --yolo --model "$model" --effort "$effort" "$@"
     ;;
 esac

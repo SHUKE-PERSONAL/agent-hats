@@ -174,6 +174,86 @@ COPILOT_GITHUB_TOKEN= "$HOME/.local/bin/lme" --kind copilot
 check "gh auth token fallback" grep -qx "COPILOT_GITHUB_TOKEN=gho_oauth" "$HOME/copilot.log"
 rm -f "$tmp/stub/gh"
 
+# --- model/effort resolution ---
+unset COPILOT_GITHUB_TOKEN; export COPILOT_GITHUB_TOKEN=github_pat_fine
+args() { grep '^ARG=' "$HOME/$1.log" | head -n "$2" | tr '\n' ' '; }
+launch() { rm -f "$HOME/claude.log" "$HOME/copilot.log"; out="$(cd "$work" && "$HOME/.local/bin/lme" "$@" 2>&1)"; rc=$?; }
+
+launch
+check "no table: built-in defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+launch --backend sonnet
+check "nickname without any table warns" bash -c '[ "$1" -eq 0 ] && grep -qF "no readable backends.json" <<<"$2"' _ "$rc" "$out"
+check "nickname without any table uses defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+
+matcfg="$HOME/.config/mat"; mkdir -p "$matcfg"
+cat > "$matcfg/backends.json" <<'JSON'
+{"backends": [
+  {"nickname": "sonnet", "kind": "claude", "default_model": "sonnet[1m]", "default_effort": "high", "config_dir": "claudew", "prompt_file": "X.md"},
+  {"nickname": "bare", "kind": "claude", "default_model": "", "default_effort": null},
+  {"nickname": "cop", "kind": "copilot", "default_model": "gpt-5.6-luna", "default_effort": "max"},
+  {"nickname": "grok", "kind": "grok", "default_model": "grok-4.6", "default_effort": "high"}
+]}
+JSON
+mat_before="$(ls -laR --time-style=full-iso "$matcfg"; cksum "$matcfg/backends.json")"
+
+launch
+check "table present, no nickname: defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+launch --backend sonnet --foo
+check "nickname resolves mat entry" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=high ARG=--dangerously-skip-permissions ARG=--foo "
+check "mat config_dir is not inherited" grep -qxF "CLAUDE_CONFIG_DIR=$cfg" "$HOME/claude.log"
+LIGHT_AGENT_BACKEND=sonnet launch
+check "LIGHT_AGENT_BACKEND selects the entry" test "$(args claude 3)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=high "
+launch --backend=sonnet --model opus --effort=low
+check "flags override the table" test "$(args claude 3)" = "ARG=--model=opus ARG=--effort ARG=low "
+LIGHT_AGENT_MODEL=m1 LIGHT_AGENT_EFFORT=e1 launch --backend sonnet
+check "env overrides the table" test "$(args claude 3)" = "ARG=--model=m1 ARG=--effort ARG=e1 "
+LIGHT_AGENT_MODEL=m1 launch --model m2
+check "flag overrides env" test "$(args claude 1)" = "ARG=--model=m2 "
+launch --model opus
+check "flag overrides defaults without table lookup" test "$(args claude 3)" = "ARG=--model=opus ARG=--effort ARG=medium "
+launch --backend bare
+check "empty entry fields fall back per field" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+launch --backend cop
+check "entry kind selects copilot" test "$(args copilot 5)" = "ARG=--yolo ARG=--model ARG=gpt-5.6-luna ARG=--effort ARG=max "
+launch --kind claude --backend cop
+check "explicit kind conflicting with entry exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "backend '\''cop'\'' has kind '\''copilot'\''" <<<"$2"' _ "$rc" "$out"
+launch --backend grok
+check "unsupported entry kind exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "accepted values: claude, copilot" <<<"$2"' _ "$rc" "$out"
+launch --backend nosuch
+check "unknown nickname exits non-zero naming it" bash -c '[ "$1" -ne 0 ] && grep -qF "unknown backend '\''nosuch'\''" <<<"$2"' _ "$rc" "$out"
+check "unknown nickname does not launch" test ! -e "$HOME/claude.log"
+
+# light-agents' own table wins over mat's
+printf '{"backends":[{"nickname":"sonnet","kind":"claude","default_model":"own","default_effort":"low"}]}\n' > "$HOME/.light-agents/backends.json"
+launch --backend sonnet
+check "light-agents table wins over mat" test "$(args claude 3)" = "ARG=--model=own ARG=--effort ARG=low "
+launch --backend cop
+check "nickname falls through to mat table" grep -qx "ARG=gpt-5.6-luna" "$HOME/copilot.log"
+echo 'not json' > "$HOME/.light-agents/backends.json"
+launch --backend sonnet
+check "malformed own table is skipped with warning" bash -c '[ "$1" -eq 0 ] && grep -qF "malformed $2" <<<"$3"' _ "$rc" "$HOME/.light-agents/backends.json" "$out"
+check "malformed own table falls to mat" grep -qx "ARG=--model=sonnet\[1m\]" "$HOME/claude.log"
+rm -f "$HOME/.light-agents/backends.json"
+
+cp -p "$matcfg/backends.json" "$tmp/mat-backends.json"
+printf '{"backends": [' > "$matcfg/backends.json"
+launch --backend sonnet
+check "malformed mat table does not abort" test "$rc" -eq 0
+check "malformed mat table warns" grep -qF "malformed $matcfg/backends.json" <<<"$out"
+check "malformed mat table uses defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+cp -p "$tmp/mat-backends.json" "$matcfg/backends.json"
+
+# jq absent: PATH holds only the stubs and wrappers for the tools the launcher needs
+nojq="$tmp/nojq"; mkdir -p "$nojq"
+for t in bash cp mkdir; do printf '#!/bin/sh\nexec /usr/bin/%s "$@"\n' "$t" > "$nojq/$t"; chmod +x "$nojq/$t"; done
+rm -f "$HOME/claude.log"
+out="$(PATH="$tmp/stub:$nojq" "$HOME/.local/bin/lme" --backend sonnet 2>&1)"; rc=$?
+check "no jq: launch still succeeds" test "$rc" -eq 0
+check "no jq: warning names jq" grep -qF "jq not found" <<<"$out"
+check "no jq: built-in defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+
+check "no write under ~/.config/mat" test "$(ls -laR --time-style=full-iso "$matcfg"; cksum "$matcfg/backends.json")" = "$mat_before"
+
 # copilot missing
 rm -f "$tmp/stub/copilot"
 out="$("$HOME/.local/bin/lme" --kind copilot 2>&1)"; rc=$?
