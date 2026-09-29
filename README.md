@@ -23,7 +23,8 @@ To keep a local edit, merge it back from the `.bak` after re-installing, or edit
 `constitutions/<mode>.md` in your checkout instead.
 
 Requires `bash` (Windows Git Bash works) and, depending on the kind, Claude Code (`claude`) or
-GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Folder trust](#folder-trust)).
+GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Folder trust](#folder-trust) and
+[Model and effort](#model-and-effort)).
 
 ## Commands
 
@@ -35,10 +36,10 @@ GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Folder trust](#
 
 ## Kinds
 
-The agent CLI is chosen by `--kind <claude|copilot>` as the first argument (`lme --kind copilot`,
-or `--kind=copilot`), else by the `LIGHT_AGENT_KIND` environment variable, else `claude`. The flag
-wins when both are set. Any other value exits non-zero naming the accepted values. The kind is part
-of the config home, so a Claude and a Copilot agent for the same mode never share a home.
+The agent CLI is chosen by `--kind <claude|copilot>` (`lme --kind copilot`, or `--kind=copilot`),
+else by the `LIGHT_AGENT_KIND` environment variable, else by the kind of the selected
+[backend](#model-and-effort), else `claude`. The flag wins when both are set. Any other value exits
+non-zero naming the accepted values. The kind is part of the config home, so a Claude and a Copilot agent for the same mode never share a home.
 
 | kind      | home variable       | prompt file in home       | config home (e.g. `lme`)        |
 |-----------|---------------------|---------------------------|---------------------------------|
@@ -56,19 +57,48 @@ Each launch:
 
    ```sh
    CLAUDE_CONFIG_DIR=<home> CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000 \
-     claude --model=opus[1m] --effort medium --dangerously-skip-permissions [your args...]
+     claude --model=<model> --effort <effort> --dangerously-skip-permissions [your args...]
    ```
 
    and for `copilot`:
 
    ```sh
    COPILOT_HOME=<home> COPILOT_SETUP_TERMINAL=false COPILOT_GITHUB_TOKEN=<token> \
-     copilot --yolo --model gpt-5.5 --effort medium [your args...]
+     copilot --yolo --model <model> --effort <effort> [your args...]
    ```
 
    `COPILOT_SETUP_TERMINAL=false` keeps Copilot's blocking terminal-setup prompt from appearing.
 
-Any arguments after the optional `--kind` are appended to the agent invocation verbatim.
+Launcher options (`--kind`, `--backend`, `--model`, `--effort`, each also as `--opt=value`) are
+read only before the first other argument; that argument and everything after it are appended to
+the agent invocation verbatim.
+
+### Model and effort
+
+`<model>` and `<effort>` are each resolved separately, first match wins:
+
+1. `--model` / `--effort`, else `LIGHT_AGENT_MODEL` / `LIGHT_AGENT_EFFORT`.
+2. The backend entry selected by `--backend <nickname>` (else `LIGHT_AGENT_BACKEND`), looked up in
+   `~/.light-agents/backends.json`, then in mat's `~/.config/mat/backends.json`.
+3. Built-in defaults: `opus[1m]` / `medium` for `claude`, `gpt-5.5` / `medium` for `copilot`.
+
+Both tables are optional and share mat's schema:
+
+```json
+{"backends": [
+  {"nickname": "sonnet", "kind": "claude", "default_model": "sonnet[1m]", "default_effort": "high"}
+]}
+```
+
+Only `nickname`, `kind`, `default_model` and `default_effort` are read; other fields (`config_dir`,
+`prompt_file`, `auth_var`, …) are ignored, and an empty or missing model or effort falls to the
+built-in default. The entry's `kind` selects the kind unless one is given explicitly; an explicit
+kind that differs, or an entry kind other than `claude`/`copilot`, exits non-zero.
+
+Without `--backend` no table is read. The tables are only ever read, never written, and a lookup
+is best-effort: without `jq`, or when no table exists, the launcher warns and uses the built-in
+defaults; an unreadable or malformed table is skipped with a warning. A nickname that no readable
+table contains exits non-zero naming it.
 
 ### Copilot token
 
