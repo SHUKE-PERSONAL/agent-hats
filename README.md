@@ -38,8 +38,8 @@ GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Folder trust](#
 
 The agent CLI is chosen by `--kind <claude|copilot>` (`lme --kind copilot`, or `--kind=copilot`),
 else by the `LIGHT_AGENT_KIND` environment variable, else by the kind of the selected
-[backend](#model-and-effort), else `claude`. The flag wins when both are set. Any other value exits non-zero naming the accepted values. The kind is part
-of the config home, so a Claude and a Copilot agent for the same mode never share a home.
+[backend](#model-and-effort), else `claude`. The flag wins when both are set. Any other value exits
+non-zero naming the accepted values. The kind is part of the config home, so a Claude and a Copilot agent for the same mode never share a home.
 
 | kind      | home variable       | prompt file in home       | config home (e.g. `lme`)        |
 |-----------|---------------------|---------------------------|---------------------------------|

@@ -31,7 +31,7 @@ while [ $# -gt 0 ]; do
       [ $# -ge 2 ] || { [ "$1" = --kind ] && die "--kind needs a value; accepted values: claude, copilot"; die "$1 needs a value"; }
       printf -v "${1#--}" '%s' "$2"; shift 2 ;;
     --kind=*|--backend=*|--model=*|--effort=*)
-      opt="${1%%=*}"; printf -v "${opt#--}" '%s' "${1#*=}"; shift ;;
+      opt="${1%%=*}"; [ -n "${1#*=}" ] || die "$opt needs a value"; printf -v "${opt#--}" '%s' "${1#*=}"; shift ;;
     *) break ;;
   esac
 done

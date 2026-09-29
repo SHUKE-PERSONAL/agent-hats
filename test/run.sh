@@ -156,6 +156,8 @@ check "unknown kind exits non-zero" test "$rc" -ne 0
 check "unknown kind names accepted values" grep -qF "accepted values: claude, copilot" <<<"$out"
 out="$(LIGHT_AGENT_KIND=bogus "$HOME/.local/bin/lme" 2>&1)"; rc=$?
 check "unknown LIGHT_AGENT_KIND exits non-zero" test "$rc" -ne 0
+out="$("$HOME/.local/bin/lme" --kind= 2>&1)"; rc=$?
+check "empty --kind= exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF -- "--kind needs a value" <<<"$2"' _ "$rc" "$out"
 
 # token resolution
 rm -f "$HOME/copilot.log"
