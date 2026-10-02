@@ -286,6 +286,18 @@ launch --kind claude --backend cop
 check "explicit kind conflicting with entry exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "backend '\''cop'\'' has kind '\''copilot'\''" <<<"$2"' _ "$rc" "$out"
 launch --backend grok
 check "unsupported entry kind exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "accepted values: claude, copilot" <<<"$2"' _ "$rc" "$out"
+launch sonnet --foo
+check "bare word selects the backend" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=high ARG=--dangerously-skip-permissions ARG=--foo "
+launch sonnet --effort low "two words"
+check "options still read after the nickname" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=two words "
+launch --backend sonnet prompt
+check "bare word after --backend passes through" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=high ARG=--dangerously-skip-permissions ARG=prompt "
+launch -- "fix it" --model x
+check "-- starts agent args and is dropped" test "$(grep '^ARG=' "$HOME/claude.log" | tr '\n' ' ')" = "ARG=--model=opus[1m] ARG=--effort ARG=medium ARG=--dangerously-skip-permissions ARG=fix it ARG=--model ARG=x "
+LIGHT_AGENT_BACKEND=cop launch sonnet
+check "bare word wins over LIGHT_AGENT_BACKEND" grep -qx "ARG=--model=sonnet\[1m\]" "$HOME/claude.log"
+launch nosuch
+check "unknown bare nickname exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "unknown backend '\''nosuch'\''" <<<"$2"' _ "$rc" "$out"
 launch --backend nosuch
 check "unknown nickname exits non-zero naming it" bash -c '[ "$1" -ne 0 ] && grep -qF "unknown backend '\''nosuch'\''" <<<"$2"' _ "$rc" "$out"
 check "unknown nickname does not launch" test ! -e "$HOME/claude.log"
