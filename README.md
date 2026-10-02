@@ -23,8 +23,8 @@ To keep a local edit, merge it back from the `.bak` after re-installing, or edit
 `constitutions/<mode>.md` in your checkout instead.
 
 Requires `bash` (Windows Git Bash works) and, depending on the kind, Claude Code (`claude`) or
-GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Folder trust](#folder-trust) and
-[Model and effort](#model-and-effort)).
+GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Claude first run](#claude-first-run),
+[Folder trust](#folder-trust) and [Model and effort](#model-and-effort)).
 
 ## Commands
 
@@ -53,10 +53,11 @@ Each launch:
 2. Requires the kind's CLI (`claude` or `copilot`) on `PATH`; otherwise exits non-zero.
 3. Creates the config home if absent and copies the constitution to the kind's prompt file,
    overwriting it — edits to the source take effect on the next launch.
-4. Runs, for `claude`:
+4. For `claude`, pre-answers the first-run prompts (see [Claude first run](#claude-first-run)).
+5. Runs, for `claude`:
 
    ```sh
-   CLAUDE_CONFIG_DIR=<home> CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000 \
+   CLAUDE_CONFIG_DIR=<home> CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000 ANTHROPIC_AUTH_TOKEN=<token> \
      claude --model=<model> --effort <effort> --dangerously-skip-permissions [your args...]
    ```
 
@@ -90,8 +91,9 @@ Both tables are optional and share mat's schema:
 ]}
 ```
 
-Only `nickname`, `kind`, `default_model` and `default_effort` are read; other fields (`config_dir`,
-`prompt_file`, `auth_var`, …) are ignored, and an empty or missing model or effort falls to the
+Only `nickname`, `kind`, `default_model`, `default_effort` and (for `claude`, see
+[Claude token](#claude-token)) `auth_var` are read; other fields (`config_dir`, `prompt_file`, …)
+are ignored, and an empty or missing model or effort falls to the
 built-in default. The entry's `kind` selects the kind unless one is given explicitly; an explicit
 kind that differs, or an entry kind other than `claude`/`copilot`, exits non-zero.
 
@@ -99,6 +101,33 @@ Without `--backend` no table is read. The tables are only ever read, never writt
 is best-effort: without `jq`, or when no table exists, the launcher warns and uses the built-in
 defaults; an unreadable or malformed table is skipped with a warning. A nickname that no readable
 table contains exits non-zero naming it.
+
+### Claude token
+
+Claude signs in with a long-lived token from `claude setup-token`, read from the selected backend's
+`auth_var` (the name of an environment variable), else from `CLAUDE_CODE_OAUTH_TOKEN`:
+
+```sh
+claude setup-token                      # once; prints sk-ant-oat01-...
+export CLAUDE_CODE_OAUTH_TOKEN=<token>  # e.g. in ~/.bashrc
+```
+
+The launcher passes it as `ANTHROPIC_AUTH_TOKEN` and drops `CLAUDE_CODE_OAUTH_TOKEN`, because Claude
+prefers a stale `.credentials.json` in the home over `CLAUDE_CODE_OAUTH_TOKEN`. One token serves
+every mode's home. If the variable is empty and neither `ANTHROPIC_AUTH_TOKEN` nor
+`ANTHROPIC_API_KEY` is set, the launcher warns and launches anyway, and Claude asks you to `/login`
+once per home.
+
+### Claude first run
+
+A fresh Claude home would stop on onboarding, the folder-trust dialog and the bypass-permissions
+warning. Before launching, the launcher sets `hasCompletedOnboarding` and trusts the project in
+`<home>/.claude.json`, and sets `skipDangerousModePermissionPrompt` in `<home>/settings.json`. Other
+keys are kept, and a file is rewritten only when a value changes. The trusted key is the git common
+root (the main checkout, also when launched from a worktree), else the current directory. Without
+`jq`, a missing file is created with just the onboarding or bypass setting, an existing one is left
+alone, and Claude asks once per folder whether to trust it. A file that is not valid JSON stops the
+launch.
 
 ### Copilot token
 

@@ -41,10 +41,11 @@ case "$kind" in
 esac
 
 # A backend nickname is looked up in light-agents' own table, then mat's;
-# only nickname, kind, default_model and default_effort are read. Both files
-# are optional and read-only: without jq, or with no readable table, the
-# built-in defaults apply. A nickname missing from every readable table is an
-# error.
+# only nickname, kind, default_model, default_effort and auth_var are read.
+# Both files are optional and read-only: without jq, or with no readable
+# table, the built-in defaults apply. A nickname missing from every readable
+# table is an error.
+auth_var=""
 if [ -n "$backend" ]; then
   tables=0 entry=""
   if ! command -v jq >/dev/null 2>&1; then
@@ -59,11 +60,11 @@ if [ -n "$backend" ]; then
       tables=$((tables + 1))
       # tr: native jq on Windows emits CRLF.
       entry="$(jq -r --arg n "$backend" 'first(.backends[] | objects | select(.nickname == $n))
-        | (.kind // ""), (.default_model // ""), (.default_effort // "")' "$table" 2>/dev/null | tr -d '\r')" || entry=""
+        | (.kind // ""), (.default_model // ""), (.default_effort // ""), (.auth_var // "")' "$table" 2>/dev/null | tr -d '\r')" || entry=""
       [ -n "$entry" ] && break
     done
     if [ -n "$entry" ]; then
-      { read -r entry_kind; read -r entry_model; read -r entry_effort; } <<<"$entry" || true  # $(...) drops trailing empty fields
+      { read -r entry_kind; read -r entry_model; read -r entry_effort; read -r auth_var; } <<<"$entry" || true  # $(...) drops trailing empty fields
       if [ -n "$entry_kind" ]; then
         case "$entry_kind" in
           claude|copilot) ;;
@@ -139,11 +140,60 @@ copilot_trust_cwd() {
   mv -f "$cfg.tmp" "$cfg"
 }
 
+# seed_json <file> <filter> [jq args...]: apply an idempotent jq update to a
+# JSON file (absent counts as {}), rewriting it only when the update changes it.
+seed_json() {
+  local file="$1" filter="$2" body="{}"
+  shift 2
+  [ -s "$file" ] && body="$(<"$file")"
+  printf '%s' "$body" | jq -e "$@" "($filter) == ." >/dev/null 2>&1 && return 0
+  printf '%s' "$body" | jq "$@" "$filter" > "$file.tmp" \
+    || { rm -f "$file.tmp"; die "cannot update $file (not valid JSON?)"; }
+  mv -f "$file.tmp" "$file"
+}
+
+# A fresh Claude home stops on onboarding (theme and login), the folder-trust
+# dialog and the bypass-permissions warning. Pre-answer all three. Claude keys
+# folder trust by the git common root (the main checkout, also for a
+# worktree), else the cwd, in Windows mixed form (C:/...).
+claude_seed_home() {
+  local dir="$PWD" common
+  common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" && dir="$(dirname "$common")"
+  command -v cygpath >/dev/null 2>&1 && dir="$(cygpath -m "$dir")"
+  if ! command -v jq >/dev/null 2>&1; then
+    warn "jq not found; folder trust not pre-seeded, Claude will ask once to trust $dir"
+    [ -e "$home/.claude.json" ] || printf '{"hasCompletedOnboarding": true}\n' > "$home/.claude.json"
+    [ -e "$home/settings.json" ] || printf '{"skipDangerousModePermissionPrompt": true}\n' > "$home/settings.json"
+    return 0
+  fi
+  seed_json "$home/.claude.json" '.hasCompletedOnboarding = true
+    | .projects[$d] = ({allowedTools: []} + (.projects[$d] // {}) + {hasTrustDialogAccepted: true})' --arg d "$dir"
+  seed_json "$home/settings.json" '.skipDangerousModePermissionPrompt = true'
+}
+
+# Claude authenticates with a `claude setup-token` token, read from the
+# backend's auth_var or CLAUDE_CODE_OAUTH_TOKEN and exported as
+# ANTHROPIC_AUTH_TOKEN, because CLAUDE_CODE_OAUTH_TOKEN loses to a stale
+# .credentials.json in the home. Without one, Claude uses whatever other auth
+# it finds (API key, cloud provider, or a /login stored in the home).
+claude_auth() {
+  local var="${auth_var:-CLAUDE_CODE_OAUTH_TOKEN}"
+  [[ "$var" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "backend '$backend' has invalid auth_var '$var'"
+  if [ -n "${!var:-}" ]; then
+    export ANTHROPIC_AUTH_TOKEN="${!var}"
+    unset CLAUDE_CODE_OAUTH_TOKEN
+  elif [ -z "${ANTHROPIC_AUTH_TOKEN:-}${ANTHROPIC_API_KEY:-}" ]; then
+    warn "$var is not set; Claude will ask you to log in (run 'claude setup-token' and export $var to skip that)"
+  fi
+}
+
 case "$kind" in
   claude)
     mkdir -p "$home"
     # Copy (never symlink) on every launch so source edits apply on next start.
     cp -f "$src" "$home/CLAUDE.md"
+    claude_seed_home
+    claude_auth
     export CLAUDE_CONFIG_DIR="$home"
     export CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000
     exec claude "--model=$model" --effort "$effort" --dangerously-skip-permissions "$@"
