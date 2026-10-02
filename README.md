@@ -92,7 +92,7 @@ Both tables are optional and share mat's schema:
 ```
 
 Only `nickname`, `kind`, `default_model`, `default_effort` and (for `claude`, see
-[Claude token](#claude-token)) `auth_var` are read; other fields (`config_dir`, `prompt_file`, …)
+[Claude token](#claude-token)) `auth_var` and `base_url_var` are read; other fields (`config_dir`, `prompt_file`, …)
 are ignored, and an empty or missing model or effort falls to the
 built-in default. The entry's `kind` selects the kind unless one is given explicitly; an explicit
 kind that differs, or an entry kind other than `claude`/`copilot`, exits non-zero.
@@ -114,7 +114,9 @@ export CLAUDE_CODE_OAUTH_TOKEN=<token>  # e.g. in ~/.bashrc
 
 The launcher passes it as `ANTHROPIC_AUTH_TOKEN` and drops `CLAUDE_CODE_OAUTH_TOKEN`, because Claude
 prefers a stale `.credentials.json` in the home over `CLAUDE_CODE_OAUTH_TOKEN`. One token serves
-every mode's home. If the variable is empty and neither `ANTHROPIC_AUTH_TOKEN` nor
+every mode's home. A backend whose `base_url_var` names an environment variable (a third-party
+Anthropic-compatible endpoint) gets it as `ANTHROPIC_BASE_URL`; if that variable is empty the launch
+exits non-zero, so the backend's key is never sent to Anthropic. If the token variable is empty and neither `ANTHROPIC_AUTH_TOKEN` nor
 `ANTHROPIC_API_KEY` is set, the launcher warns and launches anyway, and Claude asks you to `/login`
 once per home.
 
