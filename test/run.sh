@@ -17,12 +17,17 @@ cat > "$tmp/stub/claude" <<'STUB'
 #!/usr/bin/env bash
 { echo "CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"
   echo "CLAUDE_CODE_AUTO_COMPACT_WINDOW=$CLAUDE_CODE_AUTO_COMPACT_WINDOW"
+  echo "ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}"
+  echo "CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}"
   for a in "$@"; do echo "ARG=$a"; done
 } > "$HOME/claude.log"
 STUB
 chmod +x "$tmp/stub/claude"
 base_path="/usr/bin:/bin"
 export PATH="$tmp/stub:$base_path"
+unset ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL MY_TOK
+export CLAUDE_CODE_OAUTH_TOKEN=sk-test
+unset LIGHT_AGENT_KIND LIGHT_AGENT_BACKEND LIGHT_AGENT_MODEL LIGHT_AGENT_EFFORT
 
 # --- install ---
 bash "$repo/install.sh" >/dev/null
@@ -86,6 +91,48 @@ echo live > "$HOME/.light-agents/live.md"; echo adhoc > "$HOME/.light-agents/adh
 "$HOME/.local/bin/lml"; "$HOME/.local/bin/lma"
 check "lml uses lml-claude" grep -qx live "$HOME/.mat-agent-home/lml-claude/CLAUDE.md"
 check "lma uses lma-claude" grep -qx adhoc "$HOME/.mat-agent-home/lma-claude/CLAUDE.md"
+
+# --- claude home seeding ---
+mixed() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
+jqf() { jq -e "${@:3}" "$2" "$1" >/dev/null; }
+plain="$tmp/plain"; mkdir -p "$plain"
+rm -rf "$cfg"
+(cd "$plain" && "$HOME/.local/bin/lme")
+check "onboarding marked complete" jqf "$cfg/.claude.json" '.hasCompletedOnboarding == true'
+check "non-git cwd trusted" jqf "$cfg/.claude.json" '.projects[$d] == {allowedTools: [], hasTrustDialogAccepted: true}' --arg d "$(mixed "$plain")"
+check "bypass-permissions prompt skipped" jqf "$cfg/settings.json" '.skipDangerousModePermissionPrompt == true'
+
+repo_main="$tmp/repo-main"
+git init -q "$repo_main" && git -C "$repo_main" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init \
+  && git -C "$repo_main" worktree add -q "$tmp/repo-wt" 2>/dev/null && mkdir -p "$tmp/repo-wt/sub"
+(cd "$tmp/repo-wt/sub" && "$HOME/.local/bin/lme")
+check "worktree subdir trusts the git common root" jqf "$cfg/.claude.json" '.projects[$d].hasTrustDialogAccepted == true' --arg d "$(mixed "$repo_main")"
+check "worktree path itself is not keyed" jqf "$cfg/.claude.json" '.projects | has($d) | not' --arg d "$(mixed "$tmp/repo-wt")"
+
+jq '.numStartups = 7 | .projects[$d].allowedTools = ["Bash"]' --arg d "$(mixed "$plain")" "$cfg/.claude.json" > "$tmp/s.json" && mv "$tmp/s.json" "$cfg/.claude.json"
+printf '{"theme": "light"}\n' > "$cfg/settings.json"
+(cd "$plain" && "$HOME/.local/bin/lme")
+check "existing state keys kept" jqf "$cfg/.claude.json" '.numStartups == 7 and .projects[$d] == {allowedTools: ["Bash"], hasTrustDialogAccepted: true}' --arg d "$(mixed "$plain")"
+check "existing settings kept" jqf "$cfg/settings.json" '. == {theme: "light", skipDangerousModePermissionPrompt: true}'
+before="$(cksum "$cfg/.claude.json" "$cfg/settings.json")"
+(cd "$plain" && "$HOME/.local/bin/lme")
+check "seeded files are not rewritten" test "$(cksum "$cfg/.claude.json" "$cfg/settings.json")" = "$before"
+
+echo 'not json' > "$cfg/.claude.json"; rm -f "$HOME/claude.log"
+out="$(cd "$plain" && "$HOME/.local/bin/lme" 2>&1)"; rc=$?
+check "invalid .claude.json exits non-zero naming it" bash -c '[ "$1" -ne 0 ] && grep -qF "cannot update $2" <<<"$3"' _ "$rc" "$cfg/.claude.json" "$out"
+check "invalid .claude.json does not launch" test ! -e "$HOME/claude.log"
+rm -f "$cfg/.claude.json"
+
+# --- claude auth ---
+out="$(CLAUDE_CODE_OAUTH_TOKEN= "$HOME/.local/bin/lme" 2>&1)"
+check "no token warns naming CLAUDE_CODE_OAUTH_TOKEN" grep -qF "CLAUDE_CODE_OAUTH_TOKEN is not set" <<<"$out"
+check "no token still launches" grep -qx "ANTHROPIC_AUTH_TOKEN=" "$HOME/claude.log"
+out="$(CLAUDE_CODE_OAUTH_TOKEN= ANTHROPIC_API_KEY=sk-key "$HOME/.local/bin/lme" 2>&1)"
+check "other Claude auth suppresses the warning" test -z "$out"
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-x "$HOME/.local/bin/lme"
+check "token exported as ANTHROPIC_AUTH_TOKEN" grep -qx "ANTHROPIC_AUTH_TOKEN=sk-ant-oat-x" "$HOME/claude.log"
+check "CLAUDE_CODE_OAUTH_TOKEN not passed on" grep -qx "CLAUDE_CODE_OAUTH_TOKEN=" "$HOME/claude.log"
 
 # --- claude missing ---
 out="$(PATH="$base_path" "$HOME/.local/bin/lme" 2>&1)"; rc=$?
@@ -192,6 +239,8 @@ cat > "$matcfg/backends.json" <<'JSON'
 {"backends": [
   {"nickname": "sonnet", "kind": "claude", "default_model": "sonnet[1m]", "default_effort": "high", "config_dir": "claudew", "prompt_file": "X.md"},
   {"nickname": "bare", "kind": "claude", "default_model": "", "default_effort": null},
+  {"nickname": "tok", "kind": "claude", "auth_var": "MY_TOK"},
+  {"nickname": "badtok", "kind": "claude", "auth_var": "MY-TOK"},
   {"nickname": "cop", "kind": "copilot", "default_model": "gpt-5.6-luna", "default_effort": "max"},
   {"nickname": "grok", "kind": "grok", "default_model": "grok-4.6", "default_effort": "high"}
 ]}
@@ -215,6 +264,13 @@ launch --model opus
 check "flag overrides defaults without table lookup" test "$(args claude 3)" = "ARG=--model=opus ARG=--effort ARG=medium "
 launch --backend bare
 check "empty entry fields fall back per field" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+MY_TOK=sk-mine CLAUDE_CODE_OAUTH_TOKEN=sk-default launch --backend tok
+check "backend auth_var supplies the token" grep -qx "ANTHROPIC_AUTH_TOKEN=sk-mine" "$HOME/claude.log"
+check "backend token keeps default model" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+CLAUDE_CODE_OAUTH_TOKEN=sk-default launch --backend tok
+check "unset auth_var warns naming it" bash -c '[ "$1" -eq 0 ] && grep -qF "MY_TOK is not set" <<<"$2"' _ "$rc" "$out"
+launch --backend badtok
+check "invalid auth_var exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "invalid auth_var" <<<"$2"' _ "$rc" "$out"
 launch --backend cop
 check "entry kind selects copilot" test "$(args copilot 5)" = "ARG=--yolo ARG=--model ARG=gpt-5.6-luna ARG=--effort ARG=max "
 launch --kind claude --backend cop
@@ -253,6 +309,10 @@ out="$(PATH="$tmp/stub:$nojq" "$HOME/.local/bin/lme" --backend sonnet 2>&1)"; rc
 check "no jq: launch still succeeds" test "$rc" -eq 0
 check "no jq: warning names jq" grep -qF "jq not found" <<<"$out"
 check "no jq: built-in defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+nojq_home="$HOME/.mat-agent-home/lml-claude"; rm -rf "$nojq_home"
+out="$(cd "$work" && PATH="$tmp/stub:$nojq" "$HOME/.local/bin/lml" 2>&1)"; rc=$?
+check "no jq: fresh home still seeded" bash -c '[ "$1" -eq 0 ] && jq -e ".hasCompletedOnboarding == true" "$2/.claude.json" >/dev/null && jq -e ".skipDangerousModePermissionPrompt == true" "$2/settings.json" >/dev/null' _ "$rc" "$nojq_home"
+check "no jq: trust warning" grep -qF "folder trust not pre-seeded" <<<"$out"
 
 check "no write under ~/.config/mat" test "$(ls -laR --time-style=full-iso "$matcfg"; cksum "$matcfg/backends.json")" = "$mat_before"
 
