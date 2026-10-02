@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 132" width="360" height="132" role="img" aria-label="agent-hats: a pith helmet, a hard hat and a cap">
+  <!-- explore: pith helmet -->
+  <g transform="translate(0 0)">
+    <ellipse cx="60" cy="98" rx="54" ry="12" fill="#0f766e"/>
+    <path d="M22 96 C22 52 38 30 60 30 C82 30 98 52 98 96 Z" fill="#14b8a6"/>
+    <path d="M23 84 H97 L98 94 H22 Z" fill="#0f766e"/>
+    <circle cx="60" cy="28" r="5" fill="#0f766e"/>
+  </g>
+  <!-- live: hard hat -->
+  <g transform="translate(120 0)">
+    <rect x="6" y="90" width="108" height="14" rx="7" fill="#b45309"/>
+    <path d="M18 92 C18 50 36 32 60 32 C84 32 102 50 102 92 Z" fill="#f59e0b"/>
+    <path d="M52 34 C54 33 66 33 68 34 L70 92 H50 Z" fill="#fbbf24"/>
+    <rect x="18" y="84" width="84" height="8" fill="#d97706"/>
+  </g>
+  <!-- adhoc: cap -->
+  <g transform="translate(240 0)">
+    <path d="M14 98 C14 58 32 38 58 38 C84 38 100 58 100 98 Z" fill="#8b5cf6"/>
+    <path d="M60 40 C52 58 50 80 52 98" fill="none" stroke="#6d28d9" stroke-width="3" stroke-linecap="round"/>
+    <path d="M12 94 H100 C110 94 116 96 118 102 C112 106 102 106 94 104 H12 Z" fill="#6d28d9"/>
+    <circle cx="58" cy="38" r="5" fill="#6d28d9"/>
+  </g>
+</svg>

@@ -1,32 +1,31 @@
 #!/usr/bin/env bash
-# light-agent <mode> [NICK] [--kind K] [--backend NICK] [--model M] [--effort E] [--] [agent args...]
+# hat <mode> [NICK] [--kind K] [--backend NICK] [--model M] [--effort E] [--] [agent args...]
 # Provision the per-mode, per-kind config home, install the mode's
 # constitution as the kind's prompt file, and exec the agent CLI. Extra args
-# pass through to the agent. Each option falls back to its LIGHT_AGENT_*
+# pass through to the agent. Each option falls back to its HAT_*
 # variable; the flag wins over the variable.
 set -euo pipefail
 
-die()  { printf 'light-agent: %s\n' "$*" >&2; exit 1; }
-warn() { printf 'light-agent: %s\n' "$*" >&2; }
+die()  { printf 'hat: %s\n' "$*" >&2; exit 1; }
+warn() { printf 'hat: %s\n' "$*" >&2; }
 
-usage="usage: light-agent <explore|live|adhoc> [<nickname>] [--kind <claude|copilot>] [--backend <nickname>] [--model <model>] [--effort <effort>] [--] [agent args...]"
+usage="usage: hat <explore|live|adhoc> [<nickname>] [--kind <claude|copilot>] [--backend <nickname>] [--model <model>] [--effort <effort>] [--] [agent args...]"
 mode="${1:-}"
 case "$mode" in
-  explore) prefix=lme ;;
-  live)    prefix=lml ;;
-  adhoc)   prefix=lma ;;
+  explore|live|adhoc) ;;
   *) die "$usage" ;;
 esac
 shift
 
 # Launcher options are recognised only before the first agent argument, which
-# is where `lme --kind copilot` puts them; everything from there passes through.
-# A first bare word names the backend (`lml ccz` = `lml --backend ccz`) unless
-# --backend is already given; a later bare word, or `--`, starts the agent args.
-kind="${LIGHT_AGENT_KIND:-}"
-backend="${LIGHT_AGENT_BACKEND:-}"
-model="${LIGHT_AGENT_MODEL:-}"
-effort="${LIGHT_AGENT_EFFORT:-}"
+# is where `hat explore --kind copilot` puts them; everything from there passes
+# through. A first bare word names the backend (`hat live ccz` =
+# `hat live --backend ccz`) unless --backend is already given; a later bare
+# word, or `--`, starts the agent args.
+kind="${HAT_KIND:-}"
+backend="${HAT_BACKEND:-}"
+model="${HAT_MODEL:-}"
+effort="${HAT_EFFORT:-}"
 backend_arg=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -47,7 +46,7 @@ case "$kind" in
   *) die "unknown kind '$kind'; accepted values: claude, copilot" ;;
 esac
 
-# A backend nickname is looked up in light-agents' own table, then mat's;
+# A backend nickname is looked up in agent-hats' own table, then mat's;
 # only nickname, kind, default_model, default_effort, auth_var and
 # base_url_var are read.
 # Both files are optional and read-only: without jq, or with no readable
@@ -59,7 +58,7 @@ if [ -n "$backend" ]; then
   if ! command -v jq >/dev/null 2>&1; then
     warn "jq not found; backend '$backend' not resolved, using built-in defaults"
   else
-    for table in "$HOME/.light-agents/backends.json" "$HOME/.config/mat/backends.json"; do
+    for table in "$HOME/.agent-hats/backends.json" "$HOME/.config/mat/backends.json"; do
       [ -e "$table" ] || continue
       if ! jq -e '.backends | type == "array"' "$table" >/dev/null 2>&1; then
         warn "ignoring unreadable or malformed $table"
@@ -85,7 +84,7 @@ if [ -n "$backend" ]; then
       [ -n "$model" ]  || model="$entry_model"
       [ -n "$effort" ] || effort="$entry_effort"
     elif [ "$tables" -gt 0 ]; then
-      die "unknown backend '$backend': not found in ~/.light-agents/backends.json or ~/.config/mat/backends.json"
+      die "unknown backend '$backend': not found in ~/.agent-hats/backends.json or ~/.config/mat/backends.json"
     else
       warn "no readable backends.json; backend '$backend' not resolved, using built-in defaults"
     fi
@@ -97,12 +96,12 @@ case "$kind" in
   copilot) : "${model:=gpt-5.5}" "${effort:=medium}" ;;
 esac
 
-src="$HOME/.light-agents/$mode.md"
+src="$HOME/.agent-hats/$mode.md"
 [ -f "$src" ] || die "constitution not found: $src"
 
 command -v "$kind" >/dev/null 2>&1 || die "$kind not found on PATH"
 
-home="$HOME/.mat-agent-home/$prefix-$kind"
+home="$HOME/.agent-hats/homes/$mode-$kind"
 
 # Copilot's token precedence is COPILOT_GITHUB_TOKEN > GH_TOKEN > GITHUB_TOKEN;
 # fall back to the gh CLI's OAuth token. Copilot rejects classic PATs, so a
@@ -133,7 +132,7 @@ copilot_trust_cwd() {
   dir="$PWD"
   command -v cygpath >/dev/null 2>&1 && dir="$(cygpath -w "$dir")"
   if ! command -v jq >/dev/null 2>&1; then
-    printf 'light-agent: jq not found; folder trust not pre-seeded, Copilot will ask once to trust %s\n' "$dir" >&2
+    printf 'hat: jq not found; folder trust not pre-seeded, Copilot will ask once to trust %s\n' "$dir" >&2
     return 0
   fi
   header="" body="{}"

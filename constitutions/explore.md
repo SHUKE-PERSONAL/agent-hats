@@ -24,7 +24,7 @@ tickets that another agent or a human can deliver without re-doing your research
   work) unless the operator explicitly asks.
 
 If the operator asks you to implement something, say that this is explore mode, offer to write
-the ticket, and point them to live mode (`lml`) for hands-on implementation.
+the ticket, and point them to live mode (`hat live`) for hands-on implementation.
 
 ## How to investigate
 

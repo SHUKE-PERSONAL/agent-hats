@@ -1,5 +1,26 @@
-# light-agents
-Lightweight, constitution-driven agent launcher — borrows mat's standalone toolset, runs happily on Windows
+<p align="center"><img src="assets/logo.svg" alt="agent-hats logo: a pith helmet, a hard hat and a cap" width="360"></p>
+
+# agent-hats
+
+Same harness, different hat. `hat explore`, `hat live` and `hat adhoc` start Claude Code or
+GitHub Copilot CLI wearing a hat — and a hat is more than a name: each one carries a
+[constitution](#constitution-contract), a rules file that says what the role does and must not do.
+That is why one agent, under different hats, does different jobs well. Each hat also gets its own
+config home, so the roles never bleed into each other. Plain `bash`; runs on Linux, macOS and
+Windows Git Bash.
+
+| hat          | role                                                                 |
+|--------------|----------------------------------------------------------------------|
+| `explore`    | investigates and writes tickets; does not write delivery code        |
+| `live`       | hands-on generalist: implements, tests, commits in the working repo  |
+| `adhoc`      | executes one operator-given task end to end, then stops              |
+
+```sh
+hat live                # Claude Code in live mode
+hat live sonnet         # same, with the "sonnet" backend (model, effort, token)
+hat explore --kind copilot
+hat adhoc -- "bump the version"   # with an initial prompt
+```
 
 ## Install
 
@@ -7,12 +28,12 @@ Lightweight, constitution-driven agent launcher — borrows mat's standalone too
 ./install.sh
 ```
 
-This writes three shortcuts into `~/.local/bin` (which must be on `PATH`). Each is a two-line
-wrapper that execs `bin/light-agent` from this checkout by absolute path — a generated file,
-not a symlink. Re-running `install.sh` is safe and overwrites them in place; re-run it after
-moving the checkout.
+This writes the `hat` command into `~/.local/bin` (which must be on `PATH`). It is a two-line
+wrapper that execs `bin/hat` from this checkout by absolute path — a generated file, not a
+symlink. Re-running `install.sh` is safe and overwrites it in place; re-run it after moving the
+checkout.
 
-It also installs the three constitutions from `constitutions/` into `~/.light-agents/`:
+It also installs the three constitutions from `constitutions/` into `~/.agent-hats/`:
 
 - missing: copied in (`installed <path>`);
 - identical to the repo copy: left alone (`unchanged <path>`);
@@ -26,29 +47,30 @@ Requires `bash` (Windows Git Bash works) and, depending on the kind, Claude Code
 GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Claude first run](#claude-first-run),
 [Folder trust](#folder-trust) and [Model and effort](#model-and-effort)).
 
-## Commands
+## Usage
 
-| command | mode      | config home                           |
-|---------|-----------|---------------------------------------|
-| `lme`   | `explore` | `~/.mat-agent-home/lme-<kind>`        |
-| `lml`   | `live`    | `~/.mat-agent-home/lml-<kind>`        |
-| `lma`   | `adhoc`   | `~/.mat-agent-home/lma-<kind>`        |
+```sh
+hat <explore|live|adhoc> [<nickname>] [--kind <claude|copilot>] [--backend <nickname>] \
+    [--model <model>] [--effort <effort>] [--] [agent args...]
+```
+
+Each mode and kind gets its own config home, `~/.agent-hats/homes/<mode>-<kind>`.
 
 ## Kinds
 
-The agent CLI is chosen by `--kind <claude|copilot>` (`lme --kind copilot`, or `--kind=copilot`),
-else by the `LIGHT_AGENT_KIND` environment variable, else by the kind of the selected
+The agent CLI is chosen by `--kind <claude|copilot>` (`hat explore --kind copilot`, or
+`--kind=copilot`), else by the `HAT_KIND` environment variable, else by the kind of the selected
 [backend](#model-and-effort), else `claude`. The flag wins when both are set. Any other value exits
 non-zero naming the accepted values. The kind is part of the config home, so a Claude and a Copilot agent for the same mode never share a home.
 
-| kind      | home variable       | prompt file in home       | config home (e.g. `lme`)        |
-|-----------|---------------------|---------------------------|---------------------------------|
-| `claude`  | `CLAUDE_CONFIG_DIR` | `CLAUDE.md`               | `~/.mat-agent-home/lme-claude`  |
-| `copilot` | `COPILOT_HOME`      | `copilot-instructions.md` | `~/.mat-agent-home/lme-copilot` |
+| kind      | home variable       | prompt file in home       | config home (e.g. `explore`)          |
+|-----------|---------------------|---------------------------|---------------------------------------|
+| `claude`  | `CLAUDE_CONFIG_DIR` | `CLAUDE.md`               | `~/.agent-hats/homes/explore-claude`  |
+| `copilot` | `COPILOT_HOME`      | `copilot-instructions.md` | `~/.agent-hats/homes/explore-copilot` |
 
 Each launch:
 
-1. Requires the constitution `~/.light-agents/<mode>.md`; if it is missing, exits non-zero
+1. Requires the constitution `~/.agent-hats/<mode>.md`; if it is missing, exits non-zero
    naming the expected path.
 2. Requires the kind's CLI (`claude` or `copilot`) on `PATH`; otherwise exits non-zero.
 3. Creates the config home if absent and copies the constitution to the kind's prompt file,
@@ -72,24 +94,24 @@ Each launch:
 
 Launcher options (`--kind`, `--backend`, `--model`, `--effort`, each also as `--opt=value`) are
 read only before the first other argument; that argument and everything after it are appended to
-the agent invocation verbatim. A first bare word is the backend nickname, so `lml ccz` means
-`lml --backend ccz`, unless `--backend` was already given. A later bare word starts the agent
+the agent invocation verbatim. A first bare word is the backend nickname, so `hat live ccz` means
+`hat live --backend ccz`, unless `--backend` was already given. A later bare word starts the agent
 arguments, and so does `--`, which is dropped. To pass an initial prompt, put it after the nickname
 or after `--`:
 
 ```sh
-lml ccz --effort high   # backend ccz, effort high
-lml ccz "fix the bug"   # backend ccz, initial prompt
-lml -- "fix the bug"    # default backend, initial prompt
+hat live ccz --effort high   # backend ccz, effort high
+hat live ccz "fix the bug"   # backend ccz, initial prompt
+hat live -- "fix the bug"    # default backend, initial prompt
 ```
 
 ### Model and effort
 
 `<model>` and `<effort>` are each resolved separately, first match wins:
 
-1. `--model` / `--effort`, else `LIGHT_AGENT_MODEL` / `LIGHT_AGENT_EFFORT`.
-2. The backend entry selected by `--backend <nickname>` (else `LIGHT_AGENT_BACKEND`), looked up in
-   `~/.light-agents/backends.json`, then in mat's `~/.config/mat/backends.json`.
+1. `--model` / `--effort`, else `HAT_MODEL` / `HAT_EFFORT`.
+2. The backend entry selected by `--backend <nickname>` (else `HAT_BACKEND`), looked up in
+   `~/.agent-hats/backends.json`, then in mat's `~/.config/mat/backends.json`.
 3. Built-in defaults: `opus[1m]` / `medium` for `claude`, `gpt-5.5` / `medium` for `copilot`.
 
 Both tables are optional and share mat's schema:
@@ -158,15 +180,10 @@ once per folder; answer it and Copilot remembers the choice in the same home.
 
 ## Constitution contract
 
-`~/.light-agents/<mode>.md` (`explore.md`, `live.md`, `adhoc.md`) is one self-contained
-Markdown file per mode. It becomes that mode's user-level `CLAUDE.md`. There is no
-composition or shared-snippet layer; the three files repeat each other on purpose.
-
-| mode      | role                                                                 |
-|-----------|----------------------------------------------------------------------|
-| `explore` | investigates and writes tickets; does not write delivery code        |
-| `live`    | hands-on generalist: implements, tests, commits in the working repo  |
-| `adhoc`   | executes one operator-given task end to end, then stops              |
+`~/.agent-hats/<mode>.md` (`explore.md`, `live.md`, `adhoc.md`) is one self-contained
+Markdown file per mode. It becomes that mode's user-level prompt file (`CLAUDE.md` or
+`copilot-instructions.md`). There is no composition or shared-snippet layer; the three files
+repeat each other on purpose. The roles are listed at the [top](#agent-hats).
 
 Each file has a `## Role boundary` section stating what the mode does and must not do.
 
