@@ -19,13 +19,14 @@ cat > "$tmp/stub/claude" <<'STUB'
   echo "CLAUDE_CODE_AUTO_COMPACT_WINDOW=$CLAUDE_CODE_AUTO_COMPACT_WINDOW"
   echo "ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN:-}"
   echo "CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}"
+  echo "ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-}"
   for a in "$@"; do echo "ARG=$a"; done
 } > "$HOME/claude.log"
 STUB
 chmod +x "$tmp/stub/claude"
 base_path="/usr/bin:/bin"
 export PATH="$tmp/stub:$base_path"
-unset ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL MY_TOK
+unset ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL MY_TOK MY_URL
 export CLAUDE_CODE_OAUTH_TOKEN=sk-test
 unset LIGHT_AGENT_KIND LIGHT_AGENT_BACKEND LIGHT_AGENT_MODEL LIGHT_AGENT_EFFORT
 
@@ -241,6 +242,7 @@ cat > "$matcfg/backends.json" <<'JSON'
   {"nickname": "bare", "kind": "claude", "default_model": "", "default_effort": null},
   {"nickname": "tok", "kind": "claude", "auth_var": "MY_TOK"},
   {"nickname": "badtok", "kind": "claude", "auth_var": "MY-TOK"},
+  {"nickname": "third", "kind": "claude", "auth_var": "MY_TOK", "base_url_var": "MY_URL"},
   {"nickname": "cop", "kind": "copilot", "default_model": "gpt-5.6-luna", "default_effort": "max"},
   {"nickname": "grok", "kind": "grok", "default_model": "grok-4.6", "default_effort": "high"}
 ]}
@@ -269,6 +271,13 @@ check "backend auth_var supplies the token" grep -qx "ANTHROPIC_AUTH_TOKEN=sk-mi
 check "backend token keeps default model" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
 CLAUDE_CODE_OAUTH_TOKEN=sk-default launch --backend tok
 check "unset auth_var warns naming it" bash -c '[ "$1" -eq 0 ] && grep -qF "MY_TOK is not set" <<<"$2"' _ "$rc" "$out"
+MY_TOK=k MY_URL=https://example.test launch --backend third
+check "base_url_var sets ANTHROPIC_BASE_URL" bash -c 'grep -qx "ANTHROPIC_BASE_URL=https://example.test" "$1" && grep -qx "ANTHROPIC_AUTH_TOKEN=k" "$1"' _ "$HOME/claude.log"
+MY_TOK=k launch --backend third
+check "unset base_url_var exits non-zero naming it" bash -c '[ "$1" -ne 0 ] && grep -qF "MY_URL, which is not set" <<<"$2"' _ "$rc" "$out"
+check "unset base_url_var does not launch" test ! -e "$HOME/claude.log"
+launch --backend tok
+check "no base_url_var leaves ANTHROPIC_BASE_URL alone" grep -qx "ANTHROPIC_BASE_URL=" "$HOME/claude.log"
 launch --backend badtok
 check "invalid auth_var exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "invalid auth_var" <<<"$2"' _ "$rc" "$out"
 launch --backend cop

@@ -41,11 +41,12 @@ case "$kind" in
 esac
 
 # A backend nickname is looked up in light-agents' own table, then mat's;
-# only nickname, kind, default_model, default_effort and auth_var are read.
+# only nickname, kind, default_model, default_effort, auth_var and
+# base_url_var are read.
 # Both files are optional and read-only: without jq, or with no readable
 # table, the built-in defaults apply. A nickname missing from every readable
 # table is an error.
-auth_var=""
+auth_var="" base_url_var=""
 if [ -n "$backend" ]; then
   tables=0 entry=""
   if ! command -v jq >/dev/null 2>&1; then
@@ -60,11 +61,11 @@ if [ -n "$backend" ]; then
       tables=$((tables + 1))
       # tr: native jq on Windows emits CRLF.
       entry="$(jq -r --arg n "$backend" 'first(.backends[] | objects | select(.nickname == $n))
-        | (.kind // ""), (.default_model // ""), (.default_effort // ""), (.auth_var // "")' "$table" 2>/dev/null | tr -d '\r')" || entry=""
+        | (.kind // ""), (.default_model // ""), (.default_effort // ""), (.auth_var // ""), (.base_url_var // "")' "$table" 2>/dev/null | tr -d '\r')" || entry=""
       [ -n "$entry" ] && break
     done
     if [ -n "$entry" ]; then
-      { read -r entry_kind; read -r entry_model; read -r entry_effort; read -r auth_var; } <<<"$entry" || true  # $(...) drops trailing empty fields
+      { read -r entry_kind; read -r entry_model; read -r entry_effort; read -r auth_var; read -r base_url_var; } <<<"$entry" || true  # $(...) drops trailing empty fields
       if [ -n "$entry_kind" ]; then
         case "$entry_kind" in
           claude|copilot) ;;
@@ -175,10 +176,17 @@ claude_seed_home() {
 # backend's auth_var or CLAUDE_CODE_OAUTH_TOKEN and exported as
 # ANTHROPIC_AUTH_TOKEN, because CLAUDE_CODE_OAUTH_TOKEN loses to a stale
 # .credentials.json in the home. Without one, Claude uses whatever other auth
-# it finds (API key, cloud provider, or a /login stored in the home).
+# it finds (API key, cloud provider, or a /login stored in the home). A
+# backend's base_url_var names its endpoint (a third-party Anthropic-compatible
+# API); an unset one stops the launch so its key never goes to Anthropic.
 claude_auth() {
   local var="${auth_var:-CLAUDE_CODE_OAUTH_TOKEN}"
   [[ "$var" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "backend '$backend' has invalid auth_var '$var'"
+  if [ -n "$base_url_var" ]; then
+    [[ "$base_url_var" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "backend '$backend' has invalid base_url_var '$base_url_var'"
+    [ -n "${!base_url_var:-}" ] || die "backend '$backend' needs its endpoint in $base_url_var, which is not set"
+    export ANTHROPIC_BASE_URL="${!base_url_var}"
+  fi
   if [ -n "${!var:-}" ]; then
     export ANTHROPIC_AUTH_TOKEN="${!var}"
     unset CLAUDE_CODE_OAUTH_TOKEN
