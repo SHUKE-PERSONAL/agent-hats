@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# light-agent <mode> [--kind K] [--backend NICK] [--model M] [--effort E] [agent args...]
+# light-agent <mode> [NICK] [--kind K] [--backend NICK] [--model M] [--effort E] [--] [agent args...]
 # Provision the per-mode, per-kind config home, install the mode's
 # constitution as the kind's prompt file, and exec the agent CLI. Extra args
 # pass through to the agent. Each option falls back to its LIGHT_AGENT_*
@@ -9,7 +9,7 @@ set -euo pipefail
 die()  { printf 'light-agent: %s\n' "$*" >&2; exit 1; }
 warn() { printf 'light-agent: %s\n' "$*" >&2; }
 
-usage="usage: light-agent <explore|live|adhoc> [--kind <claude|copilot>] [--backend <nickname>] [--model <model>] [--effort <effort>] [agent args...]"
+usage="usage: light-agent <explore|live|adhoc> [<nickname>] [--kind <claude|copilot>] [--backend <nickname>] [--model <model>] [--effort <effort>] [--] [agent args...]"
 mode="${1:-}"
 case "$mode" in
   explore) prefix=lme ;;
@@ -21,18 +21,25 @@ shift
 
 # Launcher options are recognised only before the first agent argument, which
 # is where `lme --kind copilot` puts them; everything from there passes through.
+# A first bare word names the backend (`lml ccz` = `lml --backend ccz`) unless
+# --backend is already given; a later bare word, or `--`, starts the agent args.
 kind="${LIGHT_AGENT_KIND:-}"
 backend="${LIGHT_AGENT_BACKEND:-}"
 model="${LIGHT_AGENT_MODEL:-}"
 effort="${LIGHT_AGENT_EFFORT:-}"
+backend_arg=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --kind|--backend|--model|--effort)
       [ $# -ge 2 ] || { [ "$1" = --kind ] && die "--kind needs a value; accepted values: claude, copilot"; die "$1 needs a value"; }
-      printf -v "${1#--}" '%s' "$2"; shift 2 ;;
+      printf -v "${1#--}" '%s' "$2"; [ "$1" = --backend ] && backend_arg=1; shift 2 ;;
     --kind=*|--backend=*|--model=*|--effort=*)
-      opt="${1%%=*}"; [ -n "${1#*=}" ] || die "$opt needs a value"; printf -v "${opt#--}" '%s' "${1#*=}"; shift ;;
-    *) break ;;
+      opt="${1%%=*}"; [ -n "${1#*=}" ] || die "$opt needs a value"; printf -v "${opt#--}" '%s' "${1#*=}"
+      [ "$opt" = --backend ] && backend_arg=1; shift ;;
+    --) shift; break ;;
+    -*) break ;;
+    *) [ -z "$backend_arg" ] || break
+       backend="$1" backend_arg=1; shift ;;
   esac
 done
 case "$kind" in

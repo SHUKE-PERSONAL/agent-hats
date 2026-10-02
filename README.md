@@ -72,7 +72,16 @@ Each launch:
 
 Launcher options (`--kind`, `--backend`, `--model`, `--effort`, each also as `--opt=value`) are
 read only before the first other argument; that argument and everything after it are appended to
-the agent invocation verbatim.
+the agent invocation verbatim. A first bare word is the backend nickname, so `lml ccz` means
+`lml --backend ccz`, unless `--backend` was already given. A later bare word starts the agent
+arguments, and so does `--`, which is dropped. To pass an initial prompt, put it after the nickname
+or after `--`:
+
+```sh
+lml ccz --effort high   # backend ccz, effort high
+lml ccz "fix the bug"   # backend ccz, initial prompt
+lml -- "fix the bug"    # default backend, initial prompt
+```
 
 ### Model and effort
 
