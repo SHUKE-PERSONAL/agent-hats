@@ -135,3 +135,7 @@ Each file has a `## Role boundary` section stating what the mode does and must n
 ```sh
 bash test/run.sh
 ```
+
+## License
+
+[MIT](LICENSE)
