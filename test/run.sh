@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Hermetic tests for install.sh and bin/light-agent: temp HOME, stub claude.
+# Hermetic tests for install.sh and bin/hat: temp HOME, stub claude.
 set -uo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -28,18 +28,19 @@ base_path="/usr/bin:/bin"
 export PATH="$tmp/stub:$base_path"
 unset ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL MY_TOK MY_URL
 export CLAUDE_CODE_OAUTH_TOKEN=sk-test
-unset LIGHT_AGENT_KIND LIGHT_AGENT_BACKEND LIGHT_AGENT_MODEL LIGHT_AGENT_EFFORT
+unset HAT_KIND HAT_BACKEND HAT_MODEL HAT_EFFORT
 
 # --- install ---
 bash "$repo/install.sh" >/dev/null
-check "install creates lme/lml/lma" test -x "$HOME/.local/bin/lme" -a -x "$HOME/.local/bin/lml" -a -x "$HOME/.local/bin/lma"
-first="$(cat "$HOME/.local/bin/lme" "$HOME/.local/bin/lml" "$HOME/.local/bin/lma")"
-check "install output is idempotent" bash -c 'bash "$1" >/dev/null && [ "$(cat "$2/lme" "$2/lml" "$2/lma")" = "$3" ]' _ "$repo/install.sh" "$HOME/.local/bin" "$first"
-check "shortcuts are thin wrappers" grep -q 'bin/light-agent.* explore "\$@"' "$HOME/.local/bin/lme"
+check "install creates hat" test -x "$HOME/.local/bin/hat"
+check "install creates nothing else in bin" test "$(ls "$HOME/.local/bin")" = hat
+first="$(cat "$HOME/.local/bin/hat")"
+check "install output is idempotent" bash -c 'bash "$1" >/dev/null && [ "$(cat "$2/hat")" = "$3" ]' _ "$repo/install.sh" "$HOME/.local/bin" "$first"
+check "hat is a thin wrapper" grep -qx "exec $(printf %q "$repo/bin/hat") \"\\\$@\"" "$HOME/.local/bin/hat"
 check "no symlinks after install" test -z "$(find "$HOME" -type l)"
 
 # --- constitutions ---
-con="$HOME/.light-agents"
+con="$HOME/.agent-hats"
 for m in explore live adhoc; do
   check "install places $m.md" cmp -s "$repo/constitutions/$m.md" "$con/$m.md"
   check "$m.md states its role boundary" bash -c 'grep -q "^## Role boundary" "$1" && grep -q "^\*\*You do:\*\*" "$1" && grep -q "^\*\*You must not:\*\*" "$1"' _ "$con/$m.md"
@@ -58,16 +59,16 @@ rm -f "$con/live.md.bak"
 
 # --- missing constitution ---
 rm -f "$con/explore.md"
-out="$("$HOME/.local/bin/lme" 2>&1)"; rc=$?
+out="$("$HOME/.local/bin/hat" explore 2>&1)"; rc=$?
 check "missing constitution exits non-zero" test "$rc" -ne 0
-check "missing constitution names path" grep -qF "$HOME/.light-agents/explore.md" <<<"$out"
+check "missing constitution names path" grep -qF "$HOME/.agent-hats/explore.md" <<<"$out"
 check "missing constitution does not launch claude" test ! -e "$HOME/claude.log"
 
 # --- first run ---
-mkdir -p "$HOME/.light-agents"
-echo "v1" > "$HOME/.light-agents/explore.md"
-"$HOME/.local/bin/lme" --foo "two words"; rc=$?
-cfg="$HOME/.mat-agent-home/lme-claude"
+mkdir -p "$HOME/.agent-hats"
+echo "v1" > "$HOME/.agent-hats/explore.md"
+"$HOME/.local/bin/hat" explore --foo "two words"; rc=$?
+cfg="$HOME/.agent-hats/homes/explore-claude"
 check "first run exits 0" test "$rc" -eq 0
 check "first run creates config home" test -d "$cfg"
 check "first run writes CLAUDE.md" grep -qx v1 "$cfg/CLAUDE.md"
@@ -82,23 +83,23 @@ ARG=two words"
 check "defaults then passthrough args" test "$(grep '^ARG=' "$HOME/claude.log")" = "$expected_args"
 
 # --- refresh on edit ---
-echo "v2" > "$HOME/.light-agents/explore.md"
-"$HOME/.local/bin/lme" >/dev/null
+echo "v2" > "$HOME/.agent-hats/explore.md"
+"$HOME/.local/bin/hat" explore >/dev/null
 check "second run refreshes CLAUDE.md" grep -qx v2 "$cfg/CLAUDE.md"
 check "no symlinks after launch" test -z "$(find "$HOME" -type l)"
 
 # --- other modes map to their homes ---
-echo live > "$HOME/.light-agents/live.md"; echo adhoc > "$HOME/.light-agents/adhoc.md"
-"$HOME/.local/bin/lml"; "$HOME/.local/bin/lma"
-check "lml uses lml-claude" grep -qx live "$HOME/.mat-agent-home/lml-claude/CLAUDE.md"
-check "lma uses lma-claude" grep -qx adhoc "$HOME/.mat-agent-home/lma-claude/CLAUDE.md"
+echo live > "$HOME/.agent-hats/live.md"; echo adhoc > "$HOME/.agent-hats/adhoc.md"
+"$HOME/.local/bin/hat" live; "$HOME/.local/bin/hat" adhoc
+check "live uses live-claude" grep -qx live "$HOME/.agent-hats/homes/live-claude/CLAUDE.md"
+check "adhoc uses adhoc-claude" grep -qx adhoc "$HOME/.agent-hats/homes/adhoc-claude/CLAUDE.md"
 
 # --- claude home seeding ---
 mixed() { if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi; }
 jqf() { jq -e "${@:3}" "$2" "$1" >/dev/null; }
 plain="$tmp/plain"; mkdir -p "$plain"
 rm -rf "$cfg"
-(cd "$plain" && "$HOME/.local/bin/lme")
+(cd "$plain" && "$HOME/.local/bin/hat" explore)
 check "onboarding marked complete" jqf "$cfg/.claude.json" '.hasCompletedOnboarding == true'
 check "non-git cwd trusted" jqf "$cfg/.claude.json" '.projects[$d] == {allowedTools: [], hasTrustDialogAccepted: true}' --arg d "$(mixed "$plain")"
 check "bypass-permissions prompt skipped" jqf "$cfg/settings.json" '.skipDangerousModePermissionPrompt == true'
@@ -106,42 +107,42 @@ check "bypass-permissions prompt skipped" jqf "$cfg/settings.json" '.skipDangero
 repo_main="$tmp/repo-main"
 git init -q "$repo_main" && git -C "$repo_main" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init \
   && git -C "$repo_main" worktree add -q "$tmp/repo-wt" 2>/dev/null && mkdir -p "$tmp/repo-wt/sub"
-(cd "$tmp/repo-wt/sub" && "$HOME/.local/bin/lme")
+(cd "$tmp/repo-wt/sub" && "$HOME/.local/bin/hat" explore)
 check "worktree subdir trusts the git common root" jqf "$cfg/.claude.json" '.projects[$d].hasTrustDialogAccepted == true' --arg d "$(mixed "$repo_main")"
 check "worktree path itself is not keyed" jqf "$cfg/.claude.json" '.projects | has($d) | not' --arg d "$(mixed "$tmp/repo-wt")"
 
 jq '.numStartups = 7 | .projects[$d].allowedTools = ["Bash"]' --arg d "$(mixed "$plain")" "$cfg/.claude.json" > "$tmp/s.json" && mv "$tmp/s.json" "$cfg/.claude.json"
 printf '{"theme": "light"}\n' > "$cfg/settings.json"
-(cd "$plain" && "$HOME/.local/bin/lme")
+(cd "$plain" && "$HOME/.local/bin/hat" explore)
 check "existing state keys kept" jqf "$cfg/.claude.json" '.numStartups == 7 and .projects[$d] == {allowedTools: ["Bash"], hasTrustDialogAccepted: true}' --arg d "$(mixed "$plain")"
 check "existing settings kept" jqf "$cfg/settings.json" '. == {theme: "light", skipDangerousModePermissionPrompt: true}'
 before="$(cksum "$cfg/.claude.json" "$cfg/settings.json")"
-(cd "$plain" && "$HOME/.local/bin/lme")
+(cd "$plain" && "$HOME/.local/bin/hat" explore)
 check "seeded files are not rewritten" test "$(cksum "$cfg/.claude.json" "$cfg/settings.json")" = "$before"
 
 echo 'not json' > "$cfg/.claude.json"; rm -f "$HOME/claude.log"
-out="$(cd "$plain" && "$HOME/.local/bin/lme" 2>&1)"; rc=$?
+out="$(cd "$plain" && "$HOME/.local/bin/hat" explore 2>&1)"; rc=$?
 check "invalid .claude.json exits non-zero naming it" bash -c '[ "$1" -ne 0 ] && grep -qF "cannot update $2" <<<"$3"' _ "$rc" "$cfg/.claude.json" "$out"
 check "invalid .claude.json does not launch" test ! -e "$HOME/claude.log"
 rm -f "$cfg/.claude.json"
 
 # --- claude auth ---
-out="$(CLAUDE_CODE_OAUTH_TOKEN= "$HOME/.local/bin/lme" 2>&1)"
+out="$(CLAUDE_CODE_OAUTH_TOKEN= "$HOME/.local/bin/hat" explore 2>&1)"
 check "no token warns naming CLAUDE_CODE_OAUTH_TOKEN" grep -qF "CLAUDE_CODE_OAUTH_TOKEN is not set" <<<"$out"
 check "no token still launches" grep -qx "ANTHROPIC_AUTH_TOKEN=" "$HOME/claude.log"
-out="$(CLAUDE_CODE_OAUTH_TOKEN= ANTHROPIC_API_KEY=sk-key "$HOME/.local/bin/lme" 2>&1)"
+out="$(CLAUDE_CODE_OAUTH_TOKEN= ANTHROPIC_API_KEY=sk-key "$HOME/.local/bin/hat" explore 2>&1)"
 check "other Claude auth suppresses the warning" test -z "$out"
-CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-x "$HOME/.local/bin/lme"
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat-x "$HOME/.local/bin/hat" explore
 check "token exported as ANTHROPIC_AUTH_TOKEN" grep -qx "ANTHROPIC_AUTH_TOKEN=sk-ant-oat-x" "$HOME/claude.log"
 check "CLAUDE_CODE_OAUTH_TOKEN not passed on" grep -qx "CLAUDE_CODE_OAUTH_TOKEN=" "$HOME/claude.log"
 
 # --- claude missing ---
-out="$(PATH="$base_path" "$HOME/.local/bin/lme" 2>&1)"; rc=$?
+out="$(PATH="$base_path" "$HOME/.local/bin/hat" explore 2>&1)"; rc=$?
 check "claude missing exits non-zero" test "$rc" -ne 0
 check "claude missing message" grep -q "claude not found on PATH" <<<"$out"
 
 # --- bad mode ---
-"$repo/bin/light-agent" bogus >/dev/null 2>&1; rc=$?
+"$repo/bin/hat" bogus >/dev/null 2>&1; rc=$?
 check "unknown mode exits non-zero" test "$rc" -ne 0
 
 # --- copilot kind ---
@@ -154,18 +155,18 @@ cat > "$tmp/stub/copilot" <<'STUB'
 } > "$HOME/copilot.log"
 STUB
 chmod +x "$tmp/stub/copilot"
-unset COPILOT_GITHUB_TOKEN GH_TOKEN GITHUB_TOKEN LIGHT_AGENT_KIND
+unset COPILOT_GITHUB_TOKEN GH_TOKEN GITHUB_TOKEN HAT_KIND
 export COPILOT_GITHUB_TOKEN=github_pat_fine
-cop="$HOME/.mat-agent-home/lme-copilot"
+cop="$HOME/.agent-hats/homes/explore-copilot"
 work="$tmp/work"; mkdir -p "$work"
 trust_dir="$work"; command -v cygpath >/dev/null 2>&1 && trust_dir="$(cygpath -w "$work")"
 config_body() { grep -v '^[[:space:]]*//' "$cop/config.json"; }
 
 rm -f "$HOME/claude.log"
-(cd "$work" && "$HOME/.local/bin/lme" --kind copilot --foo "two words"); rc=$?
+(cd "$work" && "$HOME/.local/bin/hat" explore --kind copilot --foo "two words"); rc=$?
 check "--kind copilot exits 0" test "$rc" -eq 0
 check "--kind copilot does not launch claude" test ! -e "$HOME/claude.log"
-check "copilot home is lme-copilot" grep -qxF "COPILOT_HOME=$cop" "$HOME/copilot.log"
+check "copilot home is explore-copilot" grep -qxF "COPILOT_HOME=$cop" "$HOME/copilot.log"
 check "constitution installed as copilot-instructions.md" grep -qx v2 "$cop/copilot-instructions.md"
 check "copilot home has no CLAUDE.md" test ! -e "$cop/CLAUDE.md"
 check "COPILOT_SETUP_TERMINAL=false exported" grep -qx "COPILOT_SETUP_TERMINAL=false" "$HOME/copilot.log"
@@ -179,55 +180,55 @@ ARG=--foo
 ARG=two words"
 check "copilot defaults then passthrough args" test "$(grep '^ARG=' "$HOME/copilot.log")" = "$expected_args"
 check "cwd seeded into trustedFolders" bash -c 'grep -v "^[[:space:]]*//" "$1" | jq -e --arg d "$2" ".trustedFolders == [\$d]" >/dev/null' _ "$cop/config.json" "$trust_dir"
-(cd "$work" && "$HOME/.local/bin/lme" --kind=copilot); rc=$?
+(cd "$work" && "$HOME/.local/bin/hat" explore --kind=copilot); rc=$?
 check "--kind=copilot form works" test "$rc" -eq 0
 check "trust seeding is idempotent" test "$(config_body | jq '.trustedFolders | length')" -eq 1
 
 # existing Copilot-managed config: header comments and other keys survive
 printf '// This file is managed automatically.\n{\n  "loggedInUsers": [1],\n  "trustedFolders": ["X:\\\\other"]\n}\n' > "$cop/config.json"
-(cd "$work" && "$HOME/.local/bin/lme" --kind copilot)
+(cd "$work" && "$HOME/.local/bin/hat" explore --kind copilot)
 check "config header comment kept" grep -qx '// This file is managed automatically.' "$cop/config.json"
 check "config keys kept and cwd appended" bash -c 'grep -v "^[[:space:]]*//" "$1" | jq -e --arg d "$2" ".loggedInUsers == [1] and .trustedFolders == [\"X:\\\\other\", \$d]" >/dev/null' _ "$cop/config.json" "$trust_dir"
 
 rm -f "$HOME/copilot.log"
-LIGHT_AGENT_KIND=copilot "$HOME/.local/bin/lml"; rc=$?
-check "LIGHT_AGENT_KIND=copilot launches copilot" grep -qxF "COPILOT_HOME=$HOME/.mat-agent-home/lml-copilot" "$HOME/copilot.log"
+HAT_KIND=copilot "$HOME/.local/bin/hat" live; rc=$?
+check "HAT_KIND=copilot launches copilot" grep -qxF "COPILOT_HOME=$HOME/.agent-hats/homes/live-copilot" "$HOME/copilot.log"
 rm -f "$HOME/claude.log"
-LIGHT_AGENT_KIND=copilot "$HOME/.local/bin/lml" --kind claude
-check "--kind wins over LIGHT_AGENT_KIND" grep -qxF "CLAUDE_CONFIG_DIR=$HOME/.mat-agent-home/lml-claude" "$HOME/claude.log"
+HAT_KIND=copilot "$HOME/.local/bin/hat" live --kind claude
+check "--kind wins over HAT_KIND" grep -qxF "CLAUDE_CONFIG_DIR=$HOME/.agent-hats/homes/live-claude" "$HOME/claude.log"
 rm -f "$HOME/claude.log"
-"$HOME/.local/bin/lme"
-check "bare lme still launches claude" grep -qxF "CLAUDE_CONFIG_DIR=$cfg" "$HOME/claude.log"
+"$HOME/.local/bin/hat" explore
+check "bare hat explore still launches claude" grep -qxF "CLAUDE_CONFIG_DIR=$cfg" "$HOME/claude.log"
 
-out="$("$HOME/.local/bin/lme" --kind gemini 2>&1)"; rc=$?
+out="$("$HOME/.local/bin/hat" explore --kind gemini 2>&1)"; rc=$?
 check "unknown kind exits non-zero" test "$rc" -ne 0
 check "unknown kind names accepted values" grep -qF "accepted values: claude, copilot" <<<"$out"
-out="$(LIGHT_AGENT_KIND=bogus "$HOME/.local/bin/lme" 2>&1)"; rc=$?
-check "unknown LIGHT_AGENT_KIND exits non-zero" test "$rc" -ne 0
-out="$("$HOME/.local/bin/lme" --kind= 2>&1)"; rc=$?
+out="$(HAT_KIND=bogus "$HOME/.local/bin/hat" explore 2>&1)"; rc=$?
+check "unknown HAT_KIND exits non-zero" test "$rc" -ne 0
+out="$("$HOME/.local/bin/hat" explore --kind= 2>&1)"; rc=$?
 check "empty --kind= exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF -- "--kind needs a value" <<<"$2"' _ "$rc" "$out"
 
 # token resolution
 rm -f "$HOME/copilot.log"
-out="$(COPILOT_GITHUB_TOKEN=ghp_classic "$HOME/.local/bin/lme" --kind copilot 2>&1)"; rc=$?
+out="$(COPILOT_GITHUB_TOKEN=ghp_classic "$HOME/.local/bin/hat" explore --kind copilot 2>&1)"; rc=$?
 check "classic PAT exits non-zero" test "$rc" -ne 0
 check "classic PAT names the reason" grep -qF "classic PAT" <<<"$out"
 check "classic PAT does not launch copilot" test ! -e "$HOME/copilot.log"
-out="$(COPILOT_GITHUB_TOKEN= GH_TOKEN=ghp_classic "$HOME/.local/bin/lme" --kind copilot 2>&1)"; rc=$?
+out="$(COPILOT_GITHUB_TOKEN= GH_TOKEN=ghp_classic "$HOME/.local/bin/hat" explore --kind copilot 2>&1)"; rc=$?
 check "classic PAT in GH_TOKEN is refused" bash -c '[ "$1" -ne 0 ] && grep -qF "GH_TOKEN holds a classic PAT" <<<"$2"' _ "$rc" "$out"
-out="$(COPILOT_GITHUB_TOKEN= "$HOME/.local/bin/lme" --kind copilot 2>&1)"; rc=$?
+out="$(COPILOT_GITHUB_TOKEN= "$HOME/.local/bin/hat" explore --kind copilot 2>&1)"; rc=$?
 check "missing token exits non-zero" test "$rc" -ne 0
 check "missing token names the variable" grep -qF "COPILOT_GITHUB_TOKEN" <<<"$out"
 check "missing token does not launch copilot" test ! -e "$HOME/copilot.log"
 printf '#!/usr/bin/env bash\n[ "$*" = "auth token" ] && echo gho_oauth\n' > "$tmp/stub/gh"; chmod +x "$tmp/stub/gh"
-COPILOT_GITHUB_TOKEN= "$HOME/.local/bin/lme" --kind copilot
+COPILOT_GITHUB_TOKEN= "$HOME/.local/bin/hat" explore --kind copilot
 check "gh auth token fallback" grep -qx "COPILOT_GITHUB_TOKEN=gho_oauth" "$HOME/copilot.log"
 rm -f "$tmp/stub/gh"
 
 # --- model/effort resolution ---
 unset COPILOT_GITHUB_TOKEN; export COPILOT_GITHUB_TOKEN=github_pat_fine
 args() { grep '^ARG=' "$HOME/$1.log" | head -n "$2" | tr '\n' ' '; }
-launch() { rm -f "$HOME/claude.log" "$HOME/copilot.log"; out="$(cd "$work" && "$HOME/.local/bin/lme" "$@" 2>&1)"; rc=$?; }
+launch() { rm -f "$HOME/claude.log" "$HOME/copilot.log"; out="$(cd "$work" && "$HOME/.local/bin/hat" explore "$@" 2>&1)"; rc=$?; }
 
 launch
 check "no table: built-in defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
@@ -254,13 +255,13 @@ check "table present, no nickname: defaults" test "$(args claude 3)" = "ARG=--mo
 launch --backend sonnet --foo
 check "nickname resolves mat entry" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=high ARG=--dangerously-skip-permissions ARG=--foo "
 check "mat config_dir is not inherited" grep -qxF "CLAUDE_CONFIG_DIR=$cfg" "$HOME/claude.log"
-LIGHT_AGENT_BACKEND=sonnet launch
-check "LIGHT_AGENT_BACKEND selects the entry" test "$(args claude 3)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=high "
+HAT_BACKEND=sonnet launch
+check "HAT_BACKEND selects the entry" test "$(args claude 3)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=high "
 launch --backend=sonnet --model opus --effort=low
 check "flags override the table" test "$(args claude 3)" = "ARG=--model=opus ARG=--effort ARG=low "
-LIGHT_AGENT_MODEL=m1 LIGHT_AGENT_EFFORT=e1 launch --backend sonnet
+HAT_MODEL=m1 HAT_EFFORT=e1 launch --backend sonnet
 check "env overrides the table" test "$(args claude 3)" = "ARG=--model=m1 ARG=--effort ARG=e1 "
-LIGHT_AGENT_MODEL=m1 launch --model m2
+HAT_MODEL=m1 launch --model m2
 check "flag overrides env" test "$(args claude 1)" = "ARG=--model=m2 "
 launch --model opus
 check "flag overrides defaults without table lookup" test "$(args claude 3)" = "ARG=--model=opus ARG=--effort ARG=medium "
@@ -294,25 +295,25 @@ launch --backend sonnet prompt
 check "bare word after --backend passes through" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=high ARG=--dangerously-skip-permissions ARG=prompt "
 launch -- "fix it" --model x
 check "-- starts agent args and is dropped" test "$(grep '^ARG=' "$HOME/claude.log" | tr '\n' ' ')" = "ARG=--model=opus[1m] ARG=--effort ARG=medium ARG=--dangerously-skip-permissions ARG=fix it ARG=--model ARG=x "
-LIGHT_AGENT_BACKEND=cop launch sonnet
-check "bare word wins over LIGHT_AGENT_BACKEND" grep -qx "ARG=--model=sonnet\[1m\]" "$HOME/claude.log"
+HAT_BACKEND=cop launch sonnet
+check "bare word wins over HAT_BACKEND" grep -qx "ARG=--model=sonnet\[1m\]" "$HOME/claude.log"
 launch nosuch
 check "unknown bare nickname exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "unknown backend '\''nosuch'\''" <<<"$2"' _ "$rc" "$out"
 launch --backend nosuch
 check "unknown nickname exits non-zero naming it" bash -c '[ "$1" -ne 0 ] && grep -qF "unknown backend '\''nosuch'\''" <<<"$2"' _ "$rc" "$out"
 check "unknown nickname does not launch" test ! -e "$HOME/claude.log"
 
-# light-agents' own table wins over mat's
-printf '{"backends":[{"nickname":"sonnet","kind":"claude","default_model":"own","default_effort":"low"}]}\n' > "$HOME/.light-agents/backends.json"
+# agent-hats' own table wins over mat's
+printf '{"backends":[{"nickname":"sonnet","kind":"claude","default_model":"own","default_effort":"low"}]}\n' > "$HOME/.agent-hats/backends.json"
 launch --backend sonnet
-check "light-agents table wins over mat" test "$(args claude 3)" = "ARG=--model=own ARG=--effort ARG=low "
+check "agent-hats table wins over mat" test "$(args claude 3)" = "ARG=--model=own ARG=--effort ARG=low "
 launch --backend cop
 check "nickname falls through to mat table" grep -qx "ARG=gpt-5.6-luna" "$HOME/copilot.log"
-echo 'not json' > "$HOME/.light-agents/backends.json"
+echo 'not json' > "$HOME/.agent-hats/backends.json"
 launch --backend sonnet
-check "malformed own table is skipped with warning" bash -c '[ "$1" -eq 0 ] && grep -qF "malformed $2" <<<"$3"' _ "$rc" "$HOME/.light-agents/backends.json" "$out"
+check "malformed own table is skipped with warning" bash -c '[ "$1" -eq 0 ] && grep -qF "malformed $2" <<<"$3"' _ "$rc" "$HOME/.agent-hats/backends.json" "$out"
 check "malformed own table falls to mat" grep -qx "ARG=--model=sonnet\[1m\]" "$HOME/claude.log"
-rm -f "$HOME/.light-agents/backends.json"
+rm -f "$HOME/.agent-hats/backends.json"
 
 cp -p "$matcfg/backends.json" "$tmp/mat-backends.json"
 printf '{"backends": [' > "$matcfg/backends.json"
@@ -326,12 +327,12 @@ cp -p "$tmp/mat-backends.json" "$matcfg/backends.json"
 nojq="$tmp/nojq"; mkdir -p "$nojq"
 for t in bash cp mkdir; do printf '#!/bin/sh\nexec /usr/bin/%s "$@"\n' "$t" > "$nojq/$t"; chmod +x "$nojq/$t"; done
 rm -f "$HOME/claude.log"
-out="$(PATH="$tmp/stub:$nojq" "$HOME/.local/bin/lme" --backend sonnet 2>&1)"; rc=$?
+out="$(PATH="$tmp/stub:$nojq" "$HOME/.local/bin/hat" explore --backend sonnet 2>&1)"; rc=$?
 check "no jq: launch still succeeds" test "$rc" -eq 0
 check "no jq: warning names jq" grep -qF "jq not found" <<<"$out"
 check "no jq: built-in defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
-nojq_home="$HOME/.mat-agent-home/lml-claude"; rm -rf "$nojq_home"
-out="$(cd "$work" && PATH="$tmp/stub:$nojq" "$HOME/.local/bin/lml" 2>&1)"; rc=$?
+nojq_home="$HOME/.agent-hats/homes/live-claude"; rm -rf "$nojq_home"
+out="$(cd "$work" && PATH="$tmp/stub:$nojq" "$HOME/.local/bin/hat" live 2>&1)"; rc=$?
 check "no jq: fresh home still seeded" bash -c '[ "$1" -eq 0 ] && jq -e ".hasCompletedOnboarding == true" "$2/.claude.json" >/dev/null && jq -e ".skipDangerousModePermissionPrompt == true" "$2/settings.json" >/dev/null' _ "$rc" "$nojq_home"
 check "no jq: trust warning" grep -qF "folder trust not pre-seeded" <<<"$out"
 
@@ -339,7 +340,7 @@ check "no write under ~/.config/mat" test "$(ls -laR --time-style=full-iso "$mat
 
 # copilot missing
 rm -f "$tmp/stub/copilot"
-out="$("$HOME/.local/bin/lme" --kind copilot 2>&1)"; rc=$?
+out="$("$HOME/.local/bin/hat" explore --kind copilot 2>&1)"; rc=$?
 check "copilot missing exits non-zero" test "$rc" -ne 0
 check "copilot missing message" grep -q "copilot not found on PATH" <<<"$out"
 
