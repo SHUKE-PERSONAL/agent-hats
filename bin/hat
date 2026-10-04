@@ -9,12 +9,13 @@ set -euo pipefail
 die()  { printf 'hat: %s\n' "$*" >&2; exit 1; }
 warn() { printf 'hat: %s\n' "$*" >&2; }
 
-usage="usage: hat <explore|live|adhoc> [<nickname>] [--kind <claude|copilot>] [--backend <nickname>] [--model <model>] [--effort <effort>] [--] [agent args...]"
+usage="usage: hat <mode> [<nickname>] [--kind <claude|copilot>] [--backend <nickname>] [--model <model>] [--effort <effort>] [--] [agent args...]"
+# A mode is any ~/.agent-hats/<mode>.md; the name must be a plain file stem.
 mode="${1:-}"
 case "$mode" in
-  explore|live|adhoc) ;;
-  *) die "$usage" ;;
+  ""|-*) die "$usage" ;;
 esac
+[[ "$mode" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]] || die "invalid mode '$mode': use letters, digits, '-' and '_'"
 shift
 
 # Launcher options are recognised only before the first agent argument, which

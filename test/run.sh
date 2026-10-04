@@ -142,8 +142,25 @@ check "claude missing exits non-zero" test "$rc" -ne 0
 check "claude missing message" grep -q "claude not found on PATH" <<<"$out"
 
 # --- bad mode ---
-"$repo/bin/hat" bogus >/dev/null 2>&1; rc=$?
+out="$("$repo/bin/hat" bogus 2>&1)"; rc=$?
 check "unknown mode exits non-zero" test "$rc" -ne 0
+check "unknown mode names its constitution path" grep -qF "$HOME/.agent-hats/bogus.md" <<<"$out"
+out="$("$repo/bin/hat" 2>&1)"; rc=$?
+check "missing mode exits non-zero" test "$rc" -ne 0
+check "missing mode prints usage" grep -q "^hat: usage: hat <mode>" <<<"$out"
+for bad in ../live a/b .hidden; do
+  out="$("$repo/bin/hat" "$bad" 2>&1)"; rc=$?
+  check "invalid mode '$bad' exits non-zero" test "$rc" -ne 0
+  check "invalid mode '$bad' is named" grep -qF "invalid mode '$bad'" <<<"$out"
+done
+
+# --- custom mode ---
+rm -f "$HOME/claude.log"
+echo "reviewer rules" > "$HOME/.agent-hats/code-review.md"
+"$HOME/.local/bin/hat" code-review; rc=$?
+check "custom mode exits 0" test "$rc" -eq 0
+check "custom mode gets its own home" grep -qx "reviewer rules" "$HOME/.agent-hats/homes/code-review-claude/CLAUDE.md"
+check "custom mode launches claude in its home" grep -qxF "CLAUDE_CONFIG_DIR=$HOME/.agent-hats/homes/code-review-claude" "$HOME/claude.log"
 
 # --- copilot kind ---
 cat > "$tmp/stub/copilot" <<'STUB'

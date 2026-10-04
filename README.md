@@ -9,6 +9,9 @@ That is why one agent, under different hats, does different jobs well. Each hat 
 config home, so the roles never bleed into each other. Plain `bash`; runs on Linux, macOS and
 Windows Git Bash.
 
+Three hats ship with the repo; any Markdown file you drop into `~/.agent-hats/` is another
+(see [Your own hats](#your-own-hats)).
+
 | hat          | role                                                                 |
 |--------------|----------------------------------------------------------------------|
 | `explore`    | investigates and writes tickets; does not write delivery code        |
@@ -50,11 +53,13 @@ GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Claude first ru
 ## Usage
 
 ```sh
-hat <explore|live|adhoc> [<nickname>] [--kind <claude|copilot>] [--backend <nickname>] \
+hat <mode> [<nickname>] [--kind <claude|copilot>] [--backend <nickname>] \
     [--model <model>] [--effort <effort>] [--] [agent args...]
 ```
 
-Each mode and kind gets its own config home, `~/.agent-hats/homes/<mode>-<kind>`.
+`<mode>` names the constitution `~/.agent-hats/<mode>.md`: `explore`, `live`, `adhoc`, or one of
+[your own](#your-own-hats). Each mode and kind gets its own config home,
+`~/.agent-hats/homes/<mode>-<kind>`.
 
 ## Kinds
 
@@ -186,6 +191,15 @@ Markdown file per mode. It becomes that mode's user-level prompt file (`CLAUDE.m
 repeat each other on purpose. The roles are listed at the [top](#agent-hats).
 
 Each file has a `## Role boundary` section stating what the mode does and must not do.
+
+### Your own hats
+
+Write `~/.agent-hats/<mode>.md` and run `hat <mode>`; nothing else to register. For example,
+`~/.agent-hats/code-review.md` makes `hat code-review`, with its own home
+`~/.agent-hats/homes/code-review-claude`. A mode name uses letters, digits, `-` and `_`, and
+starts with a letter or digit; anything else exits non-zero. Start from one of the shipped
+constitutions and keep a `## Role boundary` section. `install.sh` only manages the three shipped
+files and never touches yours.
 
 ## Tests
 
