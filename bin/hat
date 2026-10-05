@@ -226,12 +226,36 @@ compact_window() {
   echo 256000
 }
 
+# Skills: the hat's own, under skills/<mode>/ in this checkout, are copied
+# afresh on every launch. The live hat also links each personal skill from the
+# kind's default home ($1), never replacing a skill the hat home already has.
+seed_skills() {
+  local personal="$1" dir name
+  mkdir -p "$home/skills"
+  for dir in "$(dirname "$here")/skills/$mode"/*/; do
+    dir="${dir%/}"
+    [ -f "$dir/SKILL.md" ] || continue
+    name="$(basename "$dir")"
+    rm -rf "$home/skills/$name"
+    cp -R "$dir" "$home/skills/$name"
+  done
+  [ "$mode" = live ] && [ -d "$personal" ] || return 0
+  for dir in "$personal"/*/; do
+    dir="${dir%/}"
+    [ -d "$dir" ] || continue
+    name="$(basename "$dir")"
+    if [ -e "$home/skills/$name" ] || [ -L "$home/skills/$name" ]; then continue; fi
+    ln -s "$dir" "$home/skills/$name"
+  done
+}
+
 case "$kind" in
   claude)
     mkdir -p "$home"
     # Copy (never symlink) on every launch so source edits apply on next start.
     cp -f "$src" "$home/CLAUDE.md"
     claude_seed_home
+    seed_skills "$HOME/.claude/skills"
     claude_auth
     export CLAUDE_CONFIG_DIR="$home"
     CLAUDE_CODE_AUTO_COMPACT_WINDOW="$(compact_window)"
@@ -243,6 +267,7 @@ case "$kind" in
     mkdir -p "$home"
     cp -f "$src" "$home/copilot-instructions.md"
     copilot_trust_cwd
+    seed_skills "$HOME/.copilot/skills"
     export COPILOT_HOME="$home"
     export COPILOT_SETUP_TERMINAL=false
     export COPILOT_GITHUB_TOKEN="$token"
