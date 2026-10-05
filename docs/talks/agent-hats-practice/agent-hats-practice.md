@@ -211,6 +211,7 @@ hat live                    # pair on a small change
 hat live hard               # same hat, "hard" backend
 hat adhoc -- "do MT-12345"  # deliver one ticket
 hat explore pilota          # same hat, Copilot CLI
+hat audit                   # one audit pass, tickets only
 ```
 
 <!--
