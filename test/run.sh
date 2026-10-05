@@ -54,10 +54,12 @@ check "reinstall reports constitutions unchanged" test "$(grep -c '^unchanged ' 
 check "reinstall makes no backups" test -z "$(find "$con" -name '*.bak')"
 echo "my edit" >> "$con/live.md"
 out="$(bash "$repo/install.sh")"
-check "modified constitution is backed up" bash -c 'tail -n1 "$1" | grep -qx "my edit"' _ "$con/live.md.bak"
-check "modified constitution is refreshed" cmp -s "$repo/constitutions/live.md" "$con/live.md"
-check "overwrite prints notice naming backup" grep -qF "saved to $con/live.md.bak" <<<"$out"
-rm -f "$con/live.md.bak"
+check "modified constitution is kept" bash -c 'tail -n1 "$1" | grep -qx "my edit"' _ "$con/live.md"
+check "modified constitution makes no backup" test ! -e "$con/live.md.bak"
+check "kept constitution is reported" grep -qF "kept $con/live.md (differs from" <<<"$out"
+rm -f "$con/live.md"
+bash "$repo/install.sh" >/dev/null
+check "deleted constitution is reinstalled" cmp -s "$repo/constitutions/live.md" "$con/live.md"
 
 # --- missing constitution ---
 rm -f "$con/explore.md"
