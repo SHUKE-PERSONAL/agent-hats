@@ -205,8 +205,10 @@ are not seen by a hat by default. On every launch:
   `~/.copilot/skills/*` for `copilot`) into its home, unless the home already has a skill of
   that name.
 
-On Windows without native symlinks (no Developer Mode), a personal skill is copied instead of
-linked, so a later edit is not picked up; delete it from the home to copy it again.
+On Windows without native symlinks (no Developer Mode), a personal skill is linked with a
+directory junction instead, which needs no privilege. Only if that fails too is it copied; a
+copy does not pick up later edits, so delete it from the home to link or copy it again.
+Deleting a link (`rm -rf`) removes only the link, not your skill.
 
 MCP servers are not carried over: user-scope servers live in the default home's `.claude.json`,
 which a hat home does not read. A repo's `.mcp.json` works in every hat; add a user-scope

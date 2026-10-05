@@ -408,12 +408,33 @@ check "live does not get explore's skill" test ! -e "$live_home/skills/ticket-se
 check "audit gets the shared ticket skill" cmp -s "$repo/skills/ticket-self-critique/SKILL.md" "$HOME/.agent-hats/homes/audit-claude/skills/ticket-self-critique/SKILL.md"
 (cd "$work" && "$HOME/.local/bin/hat" live >/dev/null 2>&1); rc=$?
 check "relaunching live with linked skills exits 0" test "$rc" -eq 0
-mkdir -p "$tmp/noln" "$HOME/.claude/skills/copied"
+mkdir -p "$tmp/noln" "$tmp/dotfiles/copied"
 printf '#!/bin/sh\nexit 1\n' > "$tmp/noln/ln"; chmod +x "$tmp/noln/ln"
-echo copied > "$HOME/.claude/skills/copied/SKILL.md"
-(cd "$work" && PATH="$tmp/noln:$PATH" "$HOME/.local/bin/hat" live >/dev/null 2>&1); rc=$?
-check "live copies a personal skill where symlinks fail" grep -qx copied "$live_home/skills/copied/SKILL.md"
-check "live with symlinks failing exits 0" test "$rc" -eq 0
+echo copied > "$tmp/dotfiles/copied/SKILL.md"
+# A personal skill is often itself a symlink (e.g. into a dotfiles repo); plain dir where links fail.
+ln -s "$tmp/dotfiles/copied" "$HOME/.claude/skills/copied" 2>/dev/null || cp -R "$tmp/dotfiles/copied" "$HOME/.claude/skills/copied"
+# The failing stub doubles as COMSPEC so the Windows junction step fails too.
+(cd "$work" && PATH="$tmp/noln:$PATH" COMSPEC="$tmp/noln/ln" "$HOME/.local/bin/hat" live >/dev/null 2>&1); rc=$?
+check "live copies a personal skill where links fail" grep -qx copied "$live_home/skills/copied/SKILL.md"
+check "the copy is a real directory, not a link" test ! -L "$live_home/skills/copied"
+check "live with links failing exits 0" test "$rc" -eq 0
+if command -v cygpath >/dev/null && [ -n "${COMSPEC:-}" ]; then
+  mkdir -p "$HOME/.claude/skills/joined"; echo joined > "$HOME/.claude/skills/joined/SKILL.md"
+  (cd "$work" && PATH="$tmp/noln:$PATH" "$HOME/.local/bin/hat" live >/dev/null 2>&1)
+  check "on Windows live joins a personal skill where symlinks fail" test -L "$live_home/skills/joined"
+  echo edited > "$HOME/.claude/skills/joined/SKILL.md"
+  check "a joined skill follows its source" grep -qx edited "$live_home/skills/joined/SKILL.md"
+  mkdir -p "$HOME/.claude/skills/defmsys"; echo defmsys > "$HOME/.claude/skills/defmsys/SKILL.md"
+  (cd "$work" && env -u MSYS "$HOME/.local/bin/hat" live >/dev/null 2>&1)
+  check "default Git Bash settings still link, not copy" test -L "$live_home/skills/defmsys"
+fi
+mkdir -p "$HOME/.claude/skills/broken"; echo broken > "$HOME/.claude/skills/broken/SKILL.md"
+printf '#!/bin/sh\ncase "$*" in *skills/broken*) exit 1 ;; esac\nexec /usr/bin/cp "$@"\n' > "$tmp/noln/cp"; chmod +x "$tmp/noln/cp"
+out="$(cd "$work" && PATH="$tmp/noln:$PATH" COMSPEC="$tmp/noln/ln" "$HOME/.local/bin/hat" live 2>&1)"; rc=$?
+rm -f "$tmp/noln/cp"
+check "an uncopyable personal skill does not stop live" test "$rc" -eq 0
+check "an uncopyable personal skill is named in a warning" grep -qF "skipped personal skill broken" <<<"$out"
+check "an uncopyable personal skill leaves nothing behind" test ! -e "$live_home/skills/broken"
 
 # --- audit start prompt ---
 (cd "$work" && "$HOME/.local/bin/hat" audit >/dev/null 2>&1)
