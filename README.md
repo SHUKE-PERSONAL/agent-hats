@@ -111,6 +111,9 @@ hat live ccz "fix the bug"   # backend ccz, initial prompt
 hat live -- "fix the bug"    # default backend, initial prompt
 ```
 
+`hat audit` needs no request, so with no agent arguments it starts with the prompt
+`Run one audit pass.` (for `copilot`, via `-i`). Any argument replaces it: `hat audit -- "audit PR #7"`.
+
 ### Model and effort
 
 `<model>` and `<effort>` are each resolved separately, first match wins:

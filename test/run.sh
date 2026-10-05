@@ -200,6 +200,8 @@ ARG=medium
 ARG=--foo
 ARG=two words"
 check "copilot defaults then passthrough args" test "$(grep '^ARG=' "$HOME/copilot.log")" = "$expected_args"
+(cd "$work" && "$HOME/.local/bin/hat" audit --kind copilot >/dev/null 2>&1)
+check "copilot audit starts with -i and its prompt" bash -c 'grep -A1 -x "ARG=-i" "$1" | grep -qx "ARG=Run one audit pass."' _ "$HOME/copilot.log"
 check "cwd seeded into trustedFolders" bash -c 'grep -v "^[[:space:]]*//" "$1" | jq -e --arg d "$2" ".trustedFolders == [\$d]" >/dev/null' _ "$cop/config.json" "$trust_dir"
 (cd "$work" && "$HOME/.local/bin/hat" explore --kind=copilot); rc=$?
 check "--kind=copilot form works" test "$rc" -eq 0
@@ -401,6 +403,14 @@ check "live does not get explore's skill" test ! -e "$live_home/skills/ticket-se
 check "audit gets the shared ticket skill" cmp -s "$repo/skills/ticket-self-critique/SKILL.md" "$HOME/.agent-hats/homes/audit-claude/skills/ticket-self-critique/SKILL.md"
 (cd "$work" && "$HOME/.local/bin/hat" live >/dev/null 2>&1); rc=$?
 check "relaunching live with linked skills exits 0" test "$rc" -eq 0
+
+# --- audit start prompt ---
+(cd "$work" && "$HOME/.local/bin/hat" audit >/dev/null 2>&1)
+check "bare audit starts with its standing prompt" test "$(grep '^ARG=' "$HOME/claude.log" | tail -n1)" = "ARG=Run one audit pass."
+(cd "$work" && "$HOME/.local/bin/hat" audit -- "audit PR #7" >/dev/null 2>&1)
+check "audit with a prompt keeps the operator's" bash -c '[ "$(grep "^ARG=" "$1" | tail -n1)" = "ARG=audit PR #7" ] && ! grep -q "Run one audit pass" "$1"' _ "$HOME/claude.log"
+(cd "$work" && "$HOME/.local/bin/hat" live >/dev/null 2>&1)
+check "other hats get no start prompt" bash -c '! grep -q "Run one audit pass" "$1"' _ "$HOME/claude.log"
 
 # --- status line ---
 sl_home="$HOME/.agent-hats/homes/explore-claude"

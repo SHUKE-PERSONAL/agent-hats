@@ -249,6 +249,13 @@ seed_skills() {
   done
 }
 
+# A hat that works without a request (audit) would otherwise sit at an empty
+# prompt; with no agent arguments, start it with its standing request.
+start_prompt=""
+if [ "$#" -eq 0 ] && [ "$mode" = audit ]; then
+  start_prompt="Run one audit pass."
+fi
+
 case "$kind" in
   claude)
     mkdir -p "$home"
@@ -260,6 +267,7 @@ case "$kind" in
     export CLAUDE_CONFIG_DIR="$home"
     CLAUDE_CODE_AUTO_COMPACT_WINDOW="$(compact_window)"
     export CLAUDE_CODE_AUTO_COMPACT_WINDOW
+    if [ -n "$start_prompt" ]; then set -- "$start_prompt"; fi
     exec claude "--model=$model" --effort "$effort" --dangerously-skip-permissions "$@"
     ;;
   copilot)
@@ -271,6 +279,7 @@ case "$kind" in
     export COPILOT_HOME="$home"
     export COPILOT_SETUP_TERMINAL=false
     export COPILOT_GITHUB_TOKEN="$token"
+    if [ -n "$start_prompt" ]; then set -- -i "$start_prompt"; fi
     exec copilot --yolo --model "$model" --effort "$effort" "$@"
     ;;
 esac
