@@ -205,8 +205,8 @@ are not seen by a hat by default. On every launch:
   `~/.copilot/skills/*` for `copilot`) into its home, unless the home already has a skill of
   that name.
 
-On Windows Git Bash, `ln -s` makes a copy unless native symlinks are enabled, so a personal skill
-edited later is not picked up; delete it from the home to re-link it.
+On Windows without native symlinks (no Developer Mode), a personal skill is copied instead of
+linked, so a later edit is not picked up; delete it from the home to copy it again.
 
 MCP servers are not carried over: user-scope servers live in the default home's `.claude.json`,
 which a hat home does not read. A repo's `.mcp.json` works in every hat; add a user-scope

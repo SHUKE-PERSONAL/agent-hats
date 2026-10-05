@@ -396,13 +396,24 @@ echo stale > "$ex_home/skills/ticket-self-critique/SKILL.md"
 check "a shipped skill is refreshed on launch" cmp -s "$repo/skills/ticket-self-critique/SKILL.md" "$ex_home/skills/ticket-self-critique/SKILL.md"
 mkdir -p "$live_home/skills/kept"; echo own > "$live_home/skills/kept/SKILL.md"
 (cd "$work" && "$HOME/.local/bin/hat" live >/dev/null 2>&1)
-check "live links a personal skill" test "$(readlink "$live_home/skills/mine")" = "$HOME/.claude/skills/mine"
+check "live brings in a personal skill" grep -qx mine "$live_home/skills/mine/SKILL.md"
+if [ -L "$live_home/skills/mine" ]; then
+  check "live links a personal skill" test "$(readlink "$live_home/skills/mine")" = "$HOME/.claude/skills/mine"
+fi
 check "live keeps a skill the home already has" grep -qx own "$live_home/skills/kept/SKILL.md"
 check "live does not get explore's skill" test ! -e "$live_home/skills/ticket-self-critique"
 (cd "$work" && "$HOME/.local/bin/hat" audit >/dev/null 2>&1)
 check "audit gets the shared ticket skill" cmp -s "$repo/skills/ticket-self-critique/SKILL.md" "$HOME/.agent-hats/homes/audit-claude/skills/ticket-self-critique/SKILL.md"
 (cd "$work" && "$HOME/.local/bin/hat" live >/dev/null 2>&1); rc=$?
 check "relaunching live with linked skills exits 0" test "$rc" -eq 0
+mkdir -p "$tmp/noln" "$HOME/.claude/skills/copied"
+printf '#!/bin/sh
+exit 1
+' > "$tmp/noln/ln"; chmod +x "$tmp/noln/ln"
+echo copied > "$HOME/.claude/skills/copied/SKILL.md"
+(cd "$work" && PATH="$tmp/noln:$PATH" "$HOME/.local/bin/hat" live >/dev/null 2>&1); rc=$?
+check "live copies a personal skill where symlinks fail" grep -qx copied "$live_home/skills/copied/SKILL.md"
+check "live with symlinks failing exits 0" test "$rc" -eq 0
 
 # --- audit start prompt ---
 (cd "$work" && "$HOME/.local/bin/hat" audit >/dev/null 2>&1)
