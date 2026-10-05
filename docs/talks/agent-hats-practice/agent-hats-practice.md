@@ -176,8 +176,8 @@ So what Claude actually receives is: the global CLAUDE.md (kept empty), plus the
 agent-hats packages tweaks 1 to 4 into one command. Same harness, different hat.
 - explore: reads code, reproduces bugs, finds root causes, and writes a ticket a delivery agent can work from. It may not write delivery code.
 - live: the hands-on generalist — what you already do with Claude every day. I use it for smaller changes; when the scope grows, I have explore draft a proper ticket first.
-- adhoc: delivery. Give it a well-defined ticket: it plans, reviews its own plan, implements, critiques its own diff, and — once I say go — opens a draft PR.
-Every hat follows its constitution, and none of them pushes, merges or deploys without my explicit go-ahead.
+- adhoc: delivery. Give it a well-defined ticket: it plans, reviews its own plan, implements, critiques its own diff, tests locally, and opens a draft PR. Plan, implementation, review and test are each written to the ticket folder, so a tester can see a week later how it was checked.
+Every hat follows its constitution. None of them merges, marks a PR ready, deploys, or touches JIRA — the draft PR waits for me.
 Plain bash: Linux, macOS, and Windows Git Bash.
 -->
 
@@ -225,8 +225,8 @@ A fresh home starts without onboarding or trust prompts — the launcher pre-ans
 
 <!--
 ~1 min
-Explore turns a fuzzy JIRA ticket into something precise: problem, approach, acceptance criteria. I check it.
-Adhoc delivers against that ticket, and I test it locally.
+Explore turns a fuzzy JIRA ticket into something precise: problem, approach, acceptance criteria. It writes it to ~/.agent-hats/tickets/<KEY>/ and prints the path. I check it.
+I open a second tab, start `hat adhoc`, and paste that path. Adhoc delivers against the ticket, and I test it locally.
 I review the diff — with the agent's help — before anything leaves my machine. Only then do I mark the draft PR ready for the normal peer review.
 Nothing in our process is skipped. The agent just does the legwork.
 -->

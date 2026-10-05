@@ -15,8 +15,8 @@ Three hats ship with the repo; any Markdown file you drop into `~/.agent-hats/` 
 | hat          | role                                                                 |
 |--------------|----------------------------------------------------------------------|
 | `explore`    | investigates and writes tickets; does not write delivery code        |
-| `live`       | hands-on generalist: implements, tests, commits in the working repo  |
-| `adhoc`      | executes one operator-given task end to end, then stops              |
+| `live`       | hands-on generalist: small fixes, tested, pushed as a DRAFT PR       |
+| `adhoc`      | delivers one ticket to a DRAFT PR, with a written plan/review/test trail |
 
 ```sh
 hat live                # Claude Code in live mode
@@ -214,6 +214,30 @@ Markdown file per mode. It becomes that mode's user-level prompt file (`CLAUDE.m
 repeat each other on purpose. The roles are listed at the [top](#agent-hats).
 
 Each file has a `## Role boundary` section stating what the mode does and must not do.
+
+Each shipped file also opens with a `## Team conventions` block — ticket key, branch name,
+commit and PR prefix, protected branches — written with placeholders (`ABC-1234`,
+`feature/<key>`). Edit it once to match your team.
+
+None of the hats merges, marks a PR ready, or updates JIRA; `live` and `adhoc` stop at a DRAFT
+PR for a human to review.
+
+### Ticket folders
+
+The shipped hats keep their written record outside the repo, one folder per ticket:
+
+```
+~/.agent-hats/tickets/ABC-1234/
+  abc-1234-issue.md      explore: the ticket
+  abc-1234-plan.md       adhoc
+  abc-1234-impl.md       adhoc
+  abc-1234-review.md     adhoc: each acceptance criterion → how it was verified
+  abc-1234-test.md       adhoc, live: local test record
+  artifacts/             screenshots, logs
+```
+
+Files are write-once; a redone stage is `-v2`, `-v3`, …. `explore` ends by printing the
+ticket's absolute path — paste it into a `hat adhoc` session to deliver it.
 
 ### Your own hats
 
