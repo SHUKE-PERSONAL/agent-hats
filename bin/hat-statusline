@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# Claude Code status line for hat homes, adapted from my-ai-team's statusline.sh:
+#   model | dir@branch (+adds -dels) | used/window (pct) | effort
+# The window is CLAUDE_CODE_AUTO_COMPACT_WINDOW when it is below the model's
+# full window, so the percentage shows the runway left before compaction.
+# Never fails the prompt: a missing jq, a non-git dir or odd input degrade to
+# shorter output.
+set -uo pipefail
+
+input="$(cat)"
+if [ -z "$input" ] || ! command -v jq >/dev/null 2>&1; then
+  printf 'Claude'
+  exit 0
+fi
+
+blue='\033[38;2;0;153;255m'
+orange='\033[38;2;255;176;85m'
+green='\033[38;2;0;160;0m'
+cyan='\033[38;2;46;149;153m'
+red='\033[38;2;255;85;85m'
+yellow='\033[38;2;230;200;0m'
+dim='\033[2m'
+reset='\033[0m'
+
+format_tokens() {
+  local n=$1
+  if [ "$n" -ge 1000000 ]; then awk "BEGIN {printf \"%.1fm\", $n / 1000000}"
+  elif [ "$n" -ge 1000 ]; then awk "BEGIN {printf \"%.0fk\", $n / 1000}"
+  else printf '%d' "$n"
+  fi
+}
+
+pct_color() {
+  local p=$1
+  if [ "$p" -ge 90 ]; then printf '%s' "$red"
+  elif [ "$p" -ge 70 ]; then printf '%s' "$orange"
+  elif [ "$p" -ge 50 ]; then printf '%s' "$yellow"
+  else printf '%s' "$green"
+  fi
+}
+
+# One jq pass; tr: native jq on Windows emits CRLF.
+{
+  IFS= read -r model_name
+  IFS= read -r size
+  IFS= read -r usage_type
+  IFS= read -r session_id
+  IFS= read -r used
+  IFS= read -r cwd
+  IFS= read -r effort_level
+} < <(printf '%s' "$input" | jq -r '
+  (.model.display_name // "Claude"),
+  (.context_window.context_window_size // 200000),
+  (.context_window.current_usage | type),
+  (.session_id // ""),
+  ((.context_window.current_usage.input_tokens? // 0)
+    + (.context_window.current_usage.cache_creation_input_tokens? // 0)
+    + (.context_window.current_usage.cache_read_input_tokens? // 0)),
+  (.cwd // ""),
+  (.effort.level // "")
+' 2>/dev/null | tr -d '\r')
+
+case "$size" in ''|*[!0-9]*|0) size=200000 ;; esac
+compact="${CLAUDE_CODE_AUTO_COMPACT_WINDOW:-}"
+case "$compact" in
+  ''|*[!0-9]*) ;;
+  *) [ "$compact" -gt 0 ] && [ "$compact" -lt "$size" ] && size="$compact" ;;
+esac
+
+# current_usage is null before the first reply and right after /compact; show
+# the last value seen in this session rather than a fake zero.
+sid="${session_id//[^A-Za-z0-9._-]/}"
+cache=""
+[ -n "$sid" ] && [ -n "${CLAUDE_CONFIG_DIR:-}" ] && cache="$CLAUDE_CONFIG_DIR/statusline-cache/$sid"
+current=""
+if [ "$usage_type" = "object" ]; then
+  case "$used" in ''|*[!0-9]*) ;; *) current="$used" ;; esac
+  if [ -n "$current" ] && [ -n "$cache" ]; then
+    mkdir -p "${cache%/*}" 2>/dev/null && printf '%s' "$current" > "$cache" 2>/dev/null
+  fi
+elif [ -n "$cache" ] && [ -f "$cache" ]; then
+  held="$(cat "$cache" 2>/dev/null)"
+  case "$held" in ''|*[!0-9]*) ;; *) current="$held" ;; esac
+fi
+
+out="${blue}${model_name}${reset}"
+
+if [ -n "$cwd" ]; then
+  dir="${cwd//\\//}"
+  out+=" ${dim}|${reset} ${cyan}${dir##*/}${reset}"
+  branch="$(git -C "$cwd" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+  if [ -n "$branch" ]; then
+    out+="${dim}@${reset}${green}${branch}${reset}"
+    stat="$(git -C "$cwd" diff --numstat 2>/dev/null | awk '{a+=$1; d+=$2} END {if (a+d>0) printf "+%d -%d", a, d}')"
+    [ -n "$stat" ] && out+=" ${dim}(${reset}${green}${stat%% *}${reset} ${red}${stat##* }${reset}${dim})${reset}"
+  fi
+fi
+
+total="$(format_tokens "$size")"
+if [ -n "$current" ]; then
+  pct=$(( current * 100 / size ))
+  out+=" ${dim}|${reset} ${orange}$(format_tokens "$current")/${total}${reset} ${dim}(${reset}$(pct_color "$pct")${pct}%${reset}${dim})${reset}"
+else
+  out+=" ${dim}|${reset} ${orange}--/${total}${reset}"
+fi
+
+case "$effort_level" in
+  '') ;;
+  low)    out+=" ${dim}|${reset} effort: ${dim}low${reset}" ;;
+  medium) out+=" ${dim}|${reset} effort: ${orange}med${reset}" ;;
+  *)      out+=" ${dim}|${reset} effort: ${green}${effort_level}${reset}" ;;
+esac
+
+printf '%b' "$out"
