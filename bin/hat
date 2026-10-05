@@ -226,11 +226,24 @@ compact_window() {
   echo 256000
 }
 
+# Link directory $2 to $1: a symlink; where symlinks are not allowed (Windows without
+# Developer Mode), a junction, which needs no privilege; failing that, a copy that follows links.
+link_skill() {
+  local src="$1" dst="$2"
+  # nativestrict: a real symlink or a failure, never Git Bash's silent deep copy.
+  MSYS=winsymlinks:nativestrict ln -s "$src" "$dst" 2>/dev/null && return
+  if [ -n "${COMSPEC:-}" ] && command -v cygpath >/dev/null; then
+    # COMSPEC, not `cmd`: PATH can hold other cmd shims. No MSYS argument conversion of /c /J.
+    MSYS2_ARG_CONV_EXCL='*' "$COMSPEC" /c mklink /J "$(cygpath -w "$dst")" \
+      "$(cygpath -w "$(readlink -f "$src")")" >/dev/null 2>&1 && return
+  fi
+  cp -RL "$src" "$dst"
+}
+
 # Skills: those shipped in this checkout's skills/ whose hats file lists the
 # mode are copied afresh on every launch. The live hat also links each personal skill from the
-# kind's default home ($1), never replacing a skill the hat home already has; where symlinks
-# are not allowed (Windows without Developer Mode), it copies the skill instead, following
-# links. A skill it can neither link nor copy is skipped with a warning.
+# kind's default home ($1) with link_skill, never replacing a skill the hat home already has;
+# a skill it can neither link nor copy is skipped with a warning.
 seed_skills() {
   local personal="$1" dir name
   mkdir -p "$home/skills"
@@ -247,7 +260,7 @@ seed_skills() {
     [ -d "$dir" ] || continue
     name="$(basename "$dir")"
     if [ -e "$home/skills/$name" ] || [ -L "$home/skills/$name" ]; then continue; fi
-    ln -s "$dir" "$home/skills/$name" 2>/dev/null || cp -RL "$dir" "$home/skills/$name" || {
+    link_skill "$dir" "$home/skills/$name" || {
       rm -rf "$home/skills/$name"
       warn "skipped personal skill $name: could not link or copy it"
     }
