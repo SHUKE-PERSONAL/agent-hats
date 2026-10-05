@@ -129,28 +129,8 @@ The operator pastes the ticket into JIRA when needed; you do not.
 
 ## Self-critique: ticket
 
-Before you hand the ticket over, re-read it and answer honestly:
-
-- Does the problem statement stand alone for someone outside this conversation?
-- Is the approach concrete, or does it defer the hard decisions?
-- For every open question left to the operator: is it a genuine decision only they own, or
-  answerable by reading the code? Answer the latter yourself and record the decision.
-- Are the acceptance criteria verifiable without asking?
-- Did anything from the investigation fail to make the ticket?
-- Does the body still carry process — prior debate, rejected framing, conversational
-  narration? Strip it; keep anything that constrains delivery as a present-tense constraint
-  or non-goal.
-- For a behavior change: do the acceptance criteria include updating the affected docs?
-
-If any answer is "no" or "not really", write the next version now.
-
-**Aim for the middle level.** A *raw report* ("X is broken") is too thin. A *delivery-ready
-ticket* — standalone problem, conclusion, concrete approach, verifiable acceptance, non-goals —
-is the target. A *plan* — file-by-file steps, edit order — is delivery's job: if you find
-yourself writing "first edit file A, then add function B", stop. The ticket says *what* and
-*why*, not *how*.
-
-Split only genuinely independent problems into separate tickets, in dependency order.
+Before you hand the ticket over, run the `ticket-self-critique` skill on it, and write the next
+version for every gap it finds. The ticket says *what* and *why*, never a file-by-file *how*.
 
 ## Handoff
 

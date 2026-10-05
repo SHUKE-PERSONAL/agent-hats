@@ -191,6 +191,7 @@ check "constitution installed as copilot-instructions.md" grep -qx v2 "$cop/copi
 check "copilot home has no CLAUDE.md" test ! -e "$cop/CLAUDE.md"
 check "COPILOT_SETUP_TERMINAL=false exported" grep -qx "COPILOT_SETUP_TERMINAL=false" "$HOME/copilot.log"
 check "token exported" grep -qx "COPILOT_GITHUB_TOKEN=github_pat_fine" "$HOME/copilot.log"
+check "copilot explore gets its shipped skill" test -f "$cop/skills/ticket-self-critique/SKILL.md"
 expected_args="ARG=--yolo
 ARG=--model
 ARG=gpt-5.5
@@ -378,6 +379,26 @@ rm -f "$tmp/stub/copilot"
 out="$("$HOME/.local/bin/hat" explore --kind copilot 2>&1)"; rc=$?
 check "copilot missing exits non-zero" test "$rc" -ne 0
 check "copilot missing message" grep -q "copilot not found on PATH" <<<"$out"
+
+# --- skills ---
+mkdir -p "$HOME/.claude/skills/mine" "$HOME/.claude/skills/kept"
+echo mine > "$HOME/.claude/skills/mine/SKILL.md"
+echo kept > "$HOME/.claude/skills/kept/SKILL.md"
+ex_home="$HOME/.agent-hats/homes/explore-claude"
+live_home="$HOME/.agent-hats/homes/live-claude"
+(cd "$work" && "$HOME/.local/bin/hat" explore >/dev/null 2>&1)
+check "explore gets its shipped skill" cmp -s "$repo/skills/explore/ticket-self-critique/SKILL.md" "$ex_home/skills/ticket-self-critique/SKILL.md"
+check "explore does not get personal skills" test ! -e "$ex_home/skills/mine"
+echo stale > "$ex_home/skills/ticket-self-critique/SKILL.md"
+(cd "$work" && "$HOME/.local/bin/hat" explore >/dev/null 2>&1)
+check "a shipped skill is refreshed on launch" cmp -s "$repo/skills/explore/ticket-self-critique/SKILL.md" "$ex_home/skills/ticket-self-critique/SKILL.md"
+mkdir -p "$live_home/skills/kept"; echo own > "$live_home/skills/kept/SKILL.md"
+(cd "$work" && "$HOME/.local/bin/hat" live >/dev/null 2>&1)
+check "live links a personal skill" test "$(readlink "$live_home/skills/mine")" = "$HOME/.claude/skills/mine"
+check "live keeps a skill the home already has" grep -qx own "$live_home/skills/kept/SKILL.md"
+check "live does not get explore's skill" test ! -e "$live_home/skills/ticket-self-critique"
+(cd "$work" && "$HOME/.local/bin/hat" live >/dev/null 2>&1); rc=$?
+check "relaunching live with linked skills exits 0" test "$rc" -eq 0
 
 # --- status line ---
 sl_home="$HOME/.agent-hats/homes/explore-claude"

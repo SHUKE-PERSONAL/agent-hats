@@ -190,6 +190,24 @@ Opus 5.5 | my-repo@main (+71 -10) | 120k/256k (46%) | effort: med
 (not the model's full window, so the percentage is the runway left before compaction), and effort.
 The status line itself needs `jq`; without it, it prints `Claude`.
 
+### Skills
+
+Each home has its own `skills/` folder, so skills in `~/.claude/skills` or `~/.copilot/skills`
+are not seen by a hat by default. On every launch:
+
+- the hat's own skills, under `skills/<mode>/` in this checkout, are copied into the home,
+  replacing the previous copy — `explore` ships `ticket-self-critique`;
+- `live` also links each of your personal skills (`~/.claude/skills/*` for `claude`,
+  `~/.copilot/skills/*` for `copilot`) into its home, unless the home already has a skill of
+  that name.
+
+On Windows Git Bash, `ln -s` makes a copy unless native symlinks are enabled, so a personal skill
+edited later is not picked up; delete it from the home to re-link it.
+
+MCP servers are not carried over: user-scope servers live in the default home's `.claude.json`,
+which a hat home does not read. A repo's `.mcp.json` works in every hat; add a user-scope
+server to a hat with `CLAUDE_CONFIG_DIR=~/.agent-hats/homes/live-claude claude mcp add …`.
+
 ### Copilot token
 
 Copilot signs in with a GitHub token taken from the first non-empty of `COPILOT_GITHUB_TOKEN`,
@@ -257,3 +275,6 @@ bash test/run.sh
 ## License
 
 [MIT](LICENSE)
+
+`skills/explore/ticket-self-critique` and `bin/hat-statusline` are adapted from the
+my-ai-team framework and released here under the same MIT license by their copyright holder.
