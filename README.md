@@ -84,7 +84,7 @@ Each launch:
 5. Runs, for `claude`:
 
    ```sh
-   CLAUDE_CONFIG_DIR=<home> CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000 ANTHROPIC_AUTH_TOKEN=<token> \
+   CLAUDE_CONFIG_DIR=<home> CLAUDE_CODE_AUTO_COMPACT_WINDOW=<window> ANTHROPIC_AUTH_TOKEN=<token> \
      claude --model=<model> --effort <effort> --dangerously-skip-permissions [your args...]
    ```
 
@@ -127,8 +127,9 @@ Both tables are optional and share mat's schema:
 ]}
 ```
 
-Only `nickname`, `kind`, `default_model`, `default_effort` and (for `claude`, see
-[Claude token](#claude-token)) `auth_var` and `base_url_var` are read; other fields (`config_dir`, `prompt_file`, …)
+Only `nickname`, `kind`, `default_model`, `default_effort` and, for `claude`, `auth_var`,
+`base_url_var` (see [Claude token](#claude-token)) and `context_window_size` (see
+[Context window](#context-window)) are read; other fields (`config_dir`, `prompt_file`, …)
 are ignored, and an empty or missing model or effort falls to the
 built-in default. The entry's `kind` selects the kind unless one is given explicitly; an explicit
 kind that differs, or an entry kind other than `claude`/`copilot`, exits non-zero.
@@ -137,6 +138,14 @@ Without `--backend` no table is read. The tables are only ever read, never writt
 is best-effort: without `jq`, or when no table exists, the launcher warns and uses the built-in
 defaults; an unreadable or malformed table is skipped with a warning. A nickname that no readable
 table contains exits non-zero naming it.
+
+### Context window
+
+Claude compacts the conversation once it holds `CLAUDE_CODE_AUTO_COMPACT_WINDOW` tokens. The
+launcher sets it from the backend's `context_window_size` — an integer, optionally with a `k` or
+`m` suffix (`"350k"`, `"1m"`, `150000`) — else to `256000`, well below the 1M window, so each turn
+re-sends less and a subscription lasts longer. An invalid value warns and uses `256000`. Any value
+already in your environment is replaced.
 
 ### Claude token
 
@@ -166,6 +175,20 @@ root (the main checkout, also when launched from a worktree), else the current d
 `jq`, a missing file is created with just the onboarding or bypass setting, an existing one is left
 alone, and Claude asks once per folder whether to trust it. A file that is not valid JSON stops the
 launch.
+
+### Status line
+
+With `jq`, the launcher also sets `statusLine` in `<home>/settings.json` to run `bin/hat-statusline`
+from this checkout, unless the home already has a status line of its own (one pointing at an older
+`hat-statusline` path is repointed). It shows
+
+```
+Opus 5.5 | my-repo@main (+71 -10) | 120k/256k (46%) | effort: med
+```
+
+— model, folder and branch with uncommitted line counts, tokens held against the compact window
+(not the model's full window, so the percentage is the runway left before compaction), and effort.
+The status line itself needs `jq`; without it, it prints `Claude`.
 
 ### Copilot token
 

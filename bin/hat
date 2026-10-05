@@ -8,6 +8,7 @@ set -euo pipefail
 
 die()  { printf 'hat: %s\n' "$*" >&2; exit 1; }
 warn() { printf 'hat: %s\n' "$*" >&2; }
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage="usage: hat <mode> [<nickname>] [--kind <claude|copilot>] [--backend <nickname>] [--model <model>] [--effort <effort>] [--] [agent args...]"
 # A mode is any ~/.agent-hats/<mode>.md; the name must be a plain file stem.
@@ -48,12 +49,12 @@ case "$kind" in
 esac
 
 # A backend nickname is looked up in agent-hats' own table, then mat's;
-# only nickname, kind, default_model, default_effort, auth_var and
-# base_url_var are read.
+# only nickname, kind, default_model, default_effort, auth_var, base_url_var
+# and context_window_size are read.
 # Both files are optional and read-only: without jq, or with no readable
 # table, the built-in defaults apply. A nickname missing from every readable
 # table is an error.
-auth_var="" base_url_var=""
+auth_var="" base_url_var="" context_window_size=""
 if [ -n "$backend" ]; then
   tables=0 entry=""
   if ! command -v jq >/dev/null 2>&1; then
@@ -68,11 +69,11 @@ if [ -n "$backend" ]; then
       tables=$((tables + 1))
       # tr: native jq on Windows emits CRLF.
       entry="$(jq -r --arg n "$backend" 'first(.backends[] | objects | select(.nickname == $n))
-        | (.kind // ""), (.default_model // ""), (.default_effort // ""), (.auth_var // ""), (.base_url_var // "")' "$table" 2>/dev/null | tr -d '\r')" || entry=""
+        | (.kind // ""), (.default_model // ""), (.default_effort // ""), (.auth_var // ""), (.base_url_var // ""), (.context_window_size // "" | tostring)' "$table" 2>/dev/null | tr -d '\r')" || entry=""
       [ -n "$entry" ] && break
     done
     if [ -n "$entry" ]; then
-      { read -r entry_kind; read -r entry_model; read -r entry_effort; read -r auth_var; read -r base_url_var; } <<<"$entry" || true  # $(...) drops trailing empty fields
+      { read -r entry_kind; read -r entry_model; read -r entry_effort; read -r auth_var; read -r base_url_var; read -r context_window_size; } <<<"$entry" || true  # $(...) drops trailing empty fields
       if [ -n "$entry_kind" ]; then
         case "$entry_kind" in
           claude|copilot) ;;
@@ -161,8 +162,9 @@ seed_json() {
 }
 
 # A fresh Claude home stops on onboarding (theme and login), the folder-trust
-# dialog and the bypass-permissions warning. Pre-answer all three. Claude keys
-# folder trust by the git common root (the main checkout, also for a
+# dialog and the bypass-permissions warning. Pre-answer all three, and point
+# the status line at bin/hat-statusline unless the home has its own. Claude
+# keys folder trust by the git common root (the main checkout, also for a
 # worktree), else the cwd, in Windows mixed form (C:/...).
 claude_seed_home() {
   local dir="$PWD" common
@@ -176,7 +178,11 @@ claude_seed_home() {
   fi
   seed_json "$home/.claude.json" '.hasCompletedOnboarding = true
     | .projects[$d] = ({allowedTools: []} + (.projects[$d] // {}) + {hasTrustDialogAccepted: true})' --arg d "$dir"
-  seed_json "$home/settings.json" '.skipDangerousModePermissionPrompt = true'
+  local statusline="$here/hat-statusline"
+  command -v cygpath >/dev/null 2>&1 && statusline="$(cygpath -m "$statusline")"
+  seed_json "$home/settings.json" '.skipDangerousModePermissionPrompt = true
+    | if (.statusLine == null) or ((.statusLine.command // "") | test("hat-statusline"))
+      then .statusLine = {type: "command", command: ("bash \"" + $s + "\"")} else . end' --arg s "$statusline"
 }
 
 # Claude authenticates with a `claude setup-token` token, read from the
@@ -202,6 +208,24 @@ claude_auth() {
   fi
 }
 
+# Claude compacts the conversation once it holds this many tokens. A backend's
+# context_window_size (an integer, optionally with a k or m suffix) sets it;
+# otherwise 256000, well below the 1M window, so each turn stays small.
+compact_window() {
+  local raw="$context_window_size" n
+  if [ -z "$raw" ]; then echo 256000; return; fi
+  if [[ "$raw" =~ ^([0-9]+)([kKmM]?)$ ]]; then
+    n=$((10#${BASH_REMATCH[1]}))
+    case "${BASH_REMATCH[2]}" in
+      k|K) n=$((n * 1000)) ;;
+      m|M) n=$((n * 1000000)) ;;
+    esac
+    if [ "$n" -gt 0 ]; then echo "$n"; return; fi
+  fi
+  warn "backend '$backend' has invalid context_window_size '$raw'; using 256000"
+  echo 256000
+}
+
 case "$kind" in
   claude)
     mkdir -p "$home"
@@ -210,7 +234,8 @@ case "$kind" in
     claude_seed_home
     claude_auth
     export CLAUDE_CONFIG_DIR="$home"
-    export CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000
+    CLAUDE_CODE_AUTO_COMPACT_WINDOW="$(compact_window)"
+    export CLAUDE_CODE_AUTO_COMPACT_WINDOW
     exec claude "--model=$model" --effort "$effort" --dangerously-skip-permissions "$@"
     ;;
   copilot)

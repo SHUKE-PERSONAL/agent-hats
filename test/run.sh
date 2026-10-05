@@ -11,6 +11,8 @@ ok()   { printf 'ok   %s\n' "$1"; }
 fail() { printf 'FAIL %s\n' "$1"; fails=$((fails + 1)); }
 check() { local name="$1"; shift; if "$@"; then ok "$name"; else fail "$name"; fi; }
 
+# A BASH_ENV script runs in every child bash and can reorder PATH past the stubs.
+unset BASH_ENV
 export HOME="$tmp/home"
 mkdir -p "$HOME" "$tmp/stub"
 cat > "$tmp/stub/claude" <<'STUB'
@@ -103,6 +105,7 @@ rm -rf "$cfg"
 check "onboarding marked complete" jqf "$cfg/.claude.json" '.hasCompletedOnboarding == true'
 check "non-git cwd trusted" jqf "$cfg/.claude.json" '.projects[$d] == {allowedTools: [], hasTrustDialogAccepted: true}' --arg d "$(mixed "$plain")"
 check "bypass-permissions prompt skipped" jqf "$cfg/settings.json" '.skipDangerousModePermissionPrompt == true'
+check "status line points at hat-statusline" jqf "$cfg/settings.json" '.statusLine == {type: "command", command: ("bash \"" + $s + "\"")}' --arg s "$(mixed "$repo/bin/hat-statusline")"
 
 repo_main="$tmp/repo-main"
 git init -q "$repo_main" && git -C "$repo_main" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init \
@@ -115,7 +118,7 @@ jq '.numStartups = 7 | .projects[$d].allowedTools = ["Bash"]' --arg d "$(mixed "
 printf '{"theme": "light"}\n' > "$cfg/settings.json"
 (cd "$plain" && "$HOME/.local/bin/hat" explore)
 check "existing state keys kept" jqf "$cfg/.claude.json" '.numStartups == 7 and .projects[$d] == {allowedTools: ["Bash"], hasTrustDialogAccepted: true}' --arg d "$(mixed "$plain")"
-check "existing settings kept" jqf "$cfg/settings.json" '. == {theme: "light", skipDangerousModePermissionPrompt: true}'
+check "existing settings kept" jqf "$cfg/settings.json" '.theme == "light" and .skipDangerousModePermissionPrompt == true'
 before="$(cksum "$cfg/.claude.json" "$cfg/settings.json")"
 (cd "$plain" && "$HOME/.local/bin/hat" explore)
 check "seeded files are not rewritten" test "$(cksum "$cfg/.claude.json" "$cfg/settings.json")" = "$before"
@@ -262,7 +265,11 @@ cat > "$matcfg/backends.json" <<'JSON'
   {"nickname": "badtok", "kind": "claude", "auth_var": "MY-TOK"},
   {"nickname": "third", "kind": "claude", "auth_var": "MY_TOK", "base_url_var": "MY_URL"},
   {"nickname": "cop", "kind": "copilot", "default_model": "gpt-5.6-luna", "default_effort": "max"},
-  {"nickname": "grok", "kind": "grok", "default_model": "grok-4.6", "default_effort": "high"}
+  {"nickname": "grok", "kind": "grok", "default_model": "grok-4.6", "default_effort": "high"},
+  {"nickname": "cw", "kind": "claude", "context_window_size": "350k"},
+  {"nickname": "cwm", "kind": "claude", "context_window_size": "1m"},
+  {"nickname": "cwn", "kind": "claude", "context_window_size": 150000},
+  {"nickname": "cwbad", "kind": "claude", "context_window_size": "lots"}
 ]}
 JSON
 mat_before="$(ls -laR --time-style=full-iso "$matcfg"; cksum "$matcfg/backends.json")"
@@ -320,6 +327,17 @@ launch --backend nosuch
 check "unknown nickname exits non-zero naming it" bash -c '[ "$1" -ne 0 ] && grep -qF "unknown backend '\''nosuch'\''" <<<"$2"' _ "$rc" "$out"
 check "unknown nickname does not launch" test ! -e "$HOME/claude.log"
 
+launch --backend cw
+check "context_window_size with k suffix sets the compact window" grep -qx "CLAUDE_CODE_AUTO_COMPACT_WINDOW=350000" "$HOME/claude.log"
+launch --backend cwm
+check "context_window_size with m suffix" grep -qx "CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000" "$HOME/claude.log"
+launch --backend cwn
+check "numeric context_window_size" grep -qx "CLAUDE_CODE_AUTO_COMPACT_WINDOW=150000" "$HOME/claude.log"
+launch --backend cwbad
+check "invalid context_window_size warns and uses 256000" bash -c '[ "$1" -eq 0 ] && grep -qF "invalid context_window_size '\''lots'\''" <<<"$2" && grep -qx "CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000" "$3"' _ "$rc" "$out" "$HOME/claude.log"
+CLAUDE_CODE_AUTO_COMPACT_WINDOW=999 launch --backend sonnet
+check "no context_window_size uses 256000" grep -qx "CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000" "$HOME/claude.log"
+
 # agent-hats' own table wins over mat's
 printf '{"backends":[{"nickname":"sonnet","kind":"claude","default_model":"own","default_effort":"low"}]}\n' > "$HOME/.agent-hats/backends.json"
 launch --backend sonnet
@@ -360,6 +378,24 @@ rm -f "$tmp/stub/copilot"
 out="$("$HOME/.local/bin/hat" explore --kind copilot 2>&1)"; rc=$?
 check "copilot missing exits non-zero" test "$rc" -ne 0
 check "copilot missing message" grep -q "copilot not found on PATH" <<<"$out"
+
+# --- status line ---
+sl_home="$HOME/.agent-hats/homes/explore-claude"
+jq '.statusLine = {type: "command", command: "my-line"}' "$sl_home/settings.json" > "$tmp/s.json" && mv "$tmp/s.json" "$sl_home/settings.json"
+(cd "$work" && "$HOME/.local/bin/hat" explore >/dev/null 2>&1)
+check "a custom status line is kept" jqf "$sl_home/settings.json" '.statusLine.command == "my-line"'
+jq '.statusLine = {type: "command", command: "bash \"/old/checkout/bin/hat-statusline\""}' "$sl_home/settings.json" > "$tmp/s.json" && mv "$tmp/s.json" "$sl_home/settings.json"
+(cd "$work" && "$HOME/.local/bin/hat" explore >/dev/null 2>&1)
+check "a moved checkout's status line is repointed" jqf "$sl_home/settings.json" '.statusLine.command == ("bash \"" + $s + "\"")' --arg s "$(mixed "$repo/bin/hat-statusline")"
+
+sl() { printf '%s' "$1" | CLAUDE_CONFIG_DIR="$tmp/slhome" CLAUDE_CODE_AUTO_COMPACT_WINDOW="${2:-}" bash "$repo/bin/hat-statusline" | sed 's/\x1b\[[0-9;]*m//g'; }
+payload='{"session_id":"s1","model":{"display_name":"Opus"},"cwd":"/nowhere/proj","effort":{"level":"high"},"context_window":{"context_window_size":1000000,"current_usage":{"input_tokens":1000,"cache_creation_input_tokens":2000,"cache_read_input_tokens":61000}}}'
+check "status line uses the compact window" test "$(sl "$payload" 256000)" = "Opus | proj | 64k/256k (25%) | effort: high"
+check "status line without a compact window uses the full window" test "$(sl "$payload")" = "Opus | proj | 64k/1.0m (6%) | effort: high"
+nulled='{"session_id":"s1","model":{"display_name":"Opus"},"cwd":"/nowhere/proj","context_window":{"context_window_size":1000000,"current_usage":null}}'
+check "null usage holds the last value" test "$(sl "$nulled" 256000)" = "Opus | proj | 64k/256k (25%)"
+check "null usage without history shows a placeholder" test "$(sl "${nulled/s1/s2}" 256000)" = "Opus | proj | --/256k"
+check "empty input prints Claude" test "$(printf '' | bash "$repo/bin/hat-statusline")" = "Claude"
 
 echo
 [ "$fails" -eq 0 ] && echo "all tests passed" || { echo "$fails test(s) failed"; exit 1; }
