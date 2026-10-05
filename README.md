@@ -41,11 +41,11 @@ It also installs the four constitutions from `constitutions/` into `~/.agent-hat
 
 - missing: copied in (`installed <path>`);
 - identical to the repo copy: left alone (`unchanged <path>`);
-- different (you edited it, or the repo copy changed): the existing file is saved to
-  `<mode>.md.bak`, the repo copy is installed, and a `notice:` line names the backup.
+- different (you edited it, or the repo copy changed): left alone (`kept <path> (differs from
+  <repo copy>)`).
 
-To keep a local edit, merge it back from the `.bak` after re-installing, or edit
-`constitutions/<mode>.md` in your checkout instead.
+Install never overwrites a constitution, so your edits are safe. To take a newer repo copy,
+merge it in yourself or delete `~/.agent-hats/<mode>.md` and re-run `install.sh`.
 
 Requires `bash` (Windows Git Bash works) and, depending on the kind, Claude Code (`claude`) or
 GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Claude first run](#claude-first-run),

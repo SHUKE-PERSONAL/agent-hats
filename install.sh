@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Install the hat command into ~/.local/bin and the constitutions into
 # ~/.agent-hats. The command is a generated wrapper over bin/hat; re-running
-# overwrites it in place. A constitution that differs from the repo copy is
-# backed up to <mode>.md.bak before overwrite.
+# overwrites it in place. A constitution is copied only when missing; an
+# existing one is the user's and is never overwritten.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,8 +26,6 @@ for mode in explore live adhoc audit; do
   elif cmp -s "$src" "$dst"; then
     echo "unchanged $dst"
   else
-    cp -f "$dst" "$dst.bak"
-    cp -f "$src" "$dst"
-    echo "notice: $dst differed from the repo copy; previous version saved to $dst.bak"
+    echo "kept $dst (differs from $src)"
   fi
 done
