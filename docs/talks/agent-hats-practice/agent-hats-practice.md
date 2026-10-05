@@ -170,6 +170,7 @@ So what Claude actually receives is: the global CLAUDE.md (kept empty), plus the
 | `explore` | investigate, write tickets — no code |
 | `live` | pair with me on small changes |
 | `adhoc` | deliver one ticket, then stop |
+| `audit` | review merged work, file tickets — no fixes |
 
 <!--
 ~1.5 min
@@ -177,6 +178,7 @@ agent-hats packages tweaks 1 to 4 into one command. Same harness, different hat.
 - explore: reads code, reproduces bugs, finds root causes, and writes a ticket a delivery agent can work from. It may not write delivery code.
 - live: the hands-on generalist — what you already do with Claude every day. I use it for smaller changes; when the scope grows, I have explore draft a proper ticket first.
 - adhoc: delivery. Give it a well-defined ticket: it plans, reviews its own plan, implements, critiques its own diff, tests locally, and opens a draft PR. Plan, implementation, review and test are each written to the ticket folder, so a tester can see a week later how it was checked.
+- audit: one bounded pass over recently merged PRs and the code around them. It files tickets and never touches the code. The first time I ran it on the DFX repo, it caught a production bug.
 Every hat follows its constitution. None of them merges, marks a PR ready, deploys, or touches JIRA — the draft PR waits for me.
 Plain bash: Linux, macOS, and Windows Git Bash.
 -->
@@ -194,7 +196,7 @@ Needs: `bash`, `claude` or `copilot` · optional `jq`
 
 <!--
 ~45s
-The installer writes one command, `hat`, into ~/.local/bin, and copies the three constitutions into ~/.agent-hats/.
+The installer writes one command, `hat`, into ~/.local/bin, and copies the four constitutions into ~/.agent-hats/.
 Re-running it is safe: if a constitution has changed, your old copy is backed up to .bak first.
 On Windows, Git Bash is enough.
 -->
@@ -247,7 +249,7 @@ A hat is just a constitution. Any Markdown file in ~/.agent-hats/ is a hat — n
 `tester.md` gives you `hat tester`, with its own config home.
 Ideas: a devops hat that knows our pipelines and stays read-only on infrastructure; a tester hat that writes test plans and drives the UI with Playwright; a code-review hat.
 Start from a shipped constitution and keep its "Role boundary" section — that's what keeps the role honest.
-The installer only manages the three shipped hats; it never touches yours.
+The installer only manages the four shipped hats; it never touches yours.
 -->
 
 ---
