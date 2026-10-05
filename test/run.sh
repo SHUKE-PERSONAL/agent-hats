@@ -407,9 +407,7 @@ check "audit gets the shared ticket skill" cmp -s "$repo/skills/ticket-self-crit
 (cd "$work" && "$HOME/.local/bin/hat" live >/dev/null 2>&1); rc=$?
 check "relaunching live with linked skills exits 0" test "$rc" -eq 0
 mkdir -p "$tmp/noln" "$HOME/.claude/skills/copied"
-printf '#!/bin/sh
-exit 1
-' > "$tmp/noln/ln"; chmod +x "$tmp/noln/ln"
+printf '#!/bin/sh\nexit 1\n' > "$tmp/noln/ln"; chmod +x "$tmp/noln/ln"
 echo copied > "$HOME/.claude/skills/copied/SKILL.md"
 (cd "$work" && PATH="$tmp/noln:$PATH" "$HOME/.local/bin/hat" live >/dev/null 2>&1); rc=$?
 check "live copies a personal skill where symlinks fail" grep -qx copied "$live_home/skills/copied/SKILL.md"
