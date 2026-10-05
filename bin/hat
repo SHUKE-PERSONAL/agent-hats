@@ -228,7 +228,8 @@ compact_window() {
 
 # Skills: those shipped in this checkout's skills/ whose hats file lists the
 # mode are copied afresh on every launch. The live hat also links each personal skill from the
-# kind's default home ($1), never replacing a skill the hat home already has.
+# kind's default home ($1), never replacing a skill the hat home already has; where symlinks
+# are not allowed (Windows without Developer Mode), it copies the skill instead.
 seed_skills() {
   local personal="$1" dir name
   mkdir -p "$home/skills"
@@ -245,7 +246,7 @@ seed_skills() {
     [ -d "$dir" ] || continue
     name="$(basename "$dir")"
     if [ -e "$home/skills/$name" ] || [ -L "$home/skills/$name" ]; then continue; fi
-    ln -s "$dir" "$home/skills/$name"
+    ln -s "$dir" "$home/skills/$name" 2>/dev/null || cp -R "$dir" "$home/skills/$name"
   done
 }
 
