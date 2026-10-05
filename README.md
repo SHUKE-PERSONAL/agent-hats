@@ -2,14 +2,14 @@
 
 # agent-hats
 
-Same harness, different hat. `hat explore`, `hat live` and `hat adhoc` start Claude Code or
+Same harness, different hat. `hat explore`, `hat live`, `hat adhoc` and `hat audit` start Claude Code or
 GitHub Copilot CLI wearing a hat — and a hat is more than a name: each one carries a
 [constitution](#constitution-contract), a rules file that says what the role does and must not do.
 That is why one agent, under different hats, does different jobs well. Each hat also gets its own
 config home, so the roles never bleed into each other. Plain `bash`; runs on Linux, macOS and
 Windows Git Bash.
 
-Three hats ship with the repo; any Markdown file you drop into `~/.agent-hats/` is another
+Four hats ship with the repo; any Markdown file you drop into `~/.agent-hats/` is another
 (see [Your own hats](#your-own-hats)).
 
 | hat          | role                                                                 |
@@ -17,6 +17,7 @@ Three hats ship with the repo; any Markdown file you drop into `~/.agent-hats/` 
 | `explore`    | investigates and writes tickets; does not write delivery code        |
 | `live`       | hands-on generalist: small fixes, tested, pushed as a DRAFT PR       |
 | `adhoc`      | delivers one ticket to a DRAFT PR, with a written plan/review/test trail |
+| `audit`      | one bounded pass over merged PRs and the code; writes tickets, never fixes |
 
 ```sh
 hat live                # Claude Code in live mode
@@ -36,7 +37,7 @@ wrapper that execs `bin/hat` from this checkout by absolute path — a generated
 symlink. Re-running `install.sh` is safe and overwrites it in place; re-run it after moving the
 checkout.
 
-It also installs the three constitutions from `constitutions/` into `~/.agent-hats/`:
+It also installs the four constitutions from `constitutions/` into `~/.agent-hats/`:
 
 - missing: copied in (`installed <path>`);
 - identical to the repo copy: left alone (`unchanged <path>`);
@@ -57,7 +58,7 @@ hat <mode> [<nickname>] [--kind <claude|copilot>] [--backend <nickname>] \
     [--model <model>] [--effort <effort>] [--] [agent args...]
 ```
 
-`<mode>` names the constitution `~/.agent-hats/<mode>.md`: `explore`, `live`, `adhoc`, or one of
+`<mode>` names the constitution `~/.agent-hats/<mode>.md`: `explore`, `live`, `adhoc`, `audit`, or one of
 [your own](#your-own-hats). Each mode and kind gets its own config home,
 `~/.agent-hats/homes/<mode>-<kind>`.
 
@@ -195,8 +196,8 @@ The status line itself needs `jq`; without it, it prints `Claude`.
 Each home has its own `skills/` folder, so skills in `~/.claude/skills` or `~/.copilot/skills`
 are not seen by a hat by default. On every launch:
 
-- the hat's own skills, under `skills/<mode>/` in this checkout, are copied into the home,
-  replacing the previous copy — `explore` ships `ticket-self-critique`;
+- the skills in this checkout's `skills/` whose `hats` file lists the mode are copied into the
+  home, replacing the previous copy — `explore` and `audit` get `ticket-self-critique`;
 - `live` also links each of your personal skills (`~/.claude/skills/*` for `claude`,
   `~/.copilot/skills/*` for `copilot`) into its home, unless the home already has a skill of
   that name.
@@ -226,9 +227,9 @@ once per folder; answer it and Copilot remembers the choice in the same home.
 
 ## Constitution contract
 
-`~/.agent-hats/<mode>.md` (`explore.md`, `live.md`, `adhoc.md`) is one self-contained
+`~/.agent-hats/<mode>.md` (`explore.md`, `live.md`, `adhoc.md`, `audit.md`) is one self-contained
 Markdown file per mode. It becomes that mode's user-level prompt file (`CLAUDE.md` or
-`copilot-instructions.md`). There is no composition or shared-snippet layer; the three files
+`copilot-instructions.md`). There is no composition or shared-snippet layer; the four files
 repeat each other on purpose. The roles are listed at the [top](#agent-hats).
 
 Each file has a `## Role boundary` section stating what the mode does and must not do.
@@ -246,7 +247,7 @@ The shipped hats keep their written record outside the repo, one folder per tick
 
 ```
 ~/.agent-hats/tickets/ABC-1234/
-  abc-1234-issue.md      explore: the ticket
+  abc-1234-issue.md      explore or audit: the ticket
   abc-1234-plan.md       adhoc
   abc-1234-impl.md       adhoc
   abc-1234-review.md     adhoc: each acceptance criterion → how it was verified
@@ -263,7 +264,7 @@ Write `~/.agent-hats/<mode>.md` and run `hat <mode>`; nothing else to register. 
 `~/.agent-hats/code-review.md` makes `hat code-review`, with its own home
 `~/.agent-hats/homes/code-review-claude`. A mode name uses letters, digits, `-` and `_`, and
 starts with a letter or digit; anything else exits non-zero. Start from one of the shipped
-constitutions and keep a `## Role boundary` section. `install.sh` only manages the three shipped
+constitutions and keep a `## Role boundary` section. `install.sh` only manages the four shipped
 files and never touches yours.
 
 ## Tests
@@ -276,5 +277,5 @@ bash test/run.sh
 
 [MIT](LICENSE)
 
-`skills/explore/ticket-self-critique` and `bin/hat-statusline` are adapted from the
+`constitutions/audit.md`, `skills/ticket-self-critique` and `bin/hat-statusline` are adapted from the
 my-ai-team framework and released here under the same MIT license by their copyright holder.

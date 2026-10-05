@@ -226,15 +226,15 @@ compact_window() {
   echo 256000
 }
 
-# Skills: the hat's own, under skills/<mode>/ in this checkout, are copied
-# afresh on every launch. The live hat also links each personal skill from the
+# Skills: those shipped in this checkout's skills/ whose hats file lists the
+# mode are copied afresh on every launch. The live hat also links each personal skill from the
 # kind's default home ($1), never replacing a skill the hat home already has.
 seed_skills() {
   local personal="$1" dir name
   mkdir -p "$home/skills"
-  for dir in "$(dirname "$here")/skills/$mode"/*/; do
+  for dir in "$(dirname "$here")/skills"/*/; do
     dir="${dir%/}"
-    [ -f "$dir/SKILL.md" ] || continue
+    [ -f "$dir/SKILL.md" ] && grep -qx "$mode" "$dir/hats" 2>/dev/null || continue
     name="$(basename "$dir")"
     rm -rf "$home/skills/$name"
     cp -R "$dir" "$home/skills/$name"

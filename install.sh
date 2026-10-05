@@ -17,7 +17,7 @@ echo "installed $target"
 
 condir="$HOME/.agent-hats"
 mkdir -p "$condir"
-for mode in explore live adhoc; do
+for mode in explore live adhoc audit; do
   src="$repo/constitutions/$mode.md"
   dst="$condir/$mode.md"
   if [ ! -e "$dst" ]; then

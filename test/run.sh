@@ -43,14 +43,14 @@ check "no symlinks after install" test -z "$(find "$HOME" -type l)"
 
 # --- constitutions ---
 con="$HOME/.agent-hats"
-for m in explore live adhoc; do
+for m in explore live adhoc audit; do
   check "install places $m.md" cmp -s "$repo/constitutions/$m.md" "$con/$m.md"
   check "$m.md states its role boundary" bash -c 'grep -q "^## Role boundary" "$1" && grep -q "^\*\*You do:\*\*" "$1" && grep -q "^\*\*You must not:\*\*" "$1"' _ "$con/$m.md"
 done
 check "constitutions avoid mat lifecycle and proprietary terms" \
   bash -c '! grep -niE "mat (live|explore|duo|adhoc)|supervisor|relay|baton|tmux|auto-refine|shuke" "$@"' _ "$repo"/constitutions/*.md
 out="$(bash "$repo/install.sh")"
-check "reinstall reports constitutions unchanged" test "$(grep -c '^unchanged ' <<<"$out")" -eq 3
+check "reinstall reports constitutions unchanged" test "$(grep -c '^unchanged ' <<<"$out")" -eq 4
 check "reinstall makes no backups" test -z "$(find "$con" -name '*.bak')"
 echo "my edit" >> "$con/live.md"
 out="$(bash "$repo/install.sh")"
@@ -387,16 +387,18 @@ echo kept > "$HOME/.claude/skills/kept/SKILL.md"
 ex_home="$HOME/.agent-hats/homes/explore-claude"
 live_home="$HOME/.agent-hats/homes/live-claude"
 (cd "$work" && "$HOME/.local/bin/hat" explore >/dev/null 2>&1)
-check "explore gets its shipped skill" cmp -s "$repo/skills/explore/ticket-self-critique/SKILL.md" "$ex_home/skills/ticket-self-critique/SKILL.md"
+check "explore gets its shipped skill" cmp -s "$repo/skills/ticket-self-critique/SKILL.md" "$ex_home/skills/ticket-self-critique/SKILL.md"
 check "explore does not get personal skills" test ! -e "$ex_home/skills/mine"
 echo stale > "$ex_home/skills/ticket-self-critique/SKILL.md"
 (cd "$work" && "$HOME/.local/bin/hat" explore >/dev/null 2>&1)
-check "a shipped skill is refreshed on launch" cmp -s "$repo/skills/explore/ticket-self-critique/SKILL.md" "$ex_home/skills/ticket-self-critique/SKILL.md"
+check "a shipped skill is refreshed on launch" cmp -s "$repo/skills/ticket-self-critique/SKILL.md" "$ex_home/skills/ticket-self-critique/SKILL.md"
 mkdir -p "$live_home/skills/kept"; echo own > "$live_home/skills/kept/SKILL.md"
 (cd "$work" && "$HOME/.local/bin/hat" live >/dev/null 2>&1)
 check "live links a personal skill" test "$(readlink "$live_home/skills/mine")" = "$HOME/.claude/skills/mine"
 check "live keeps a skill the home already has" grep -qx own "$live_home/skills/kept/SKILL.md"
 check "live does not get explore's skill" test ! -e "$live_home/skills/ticket-self-critique"
+(cd "$work" && "$HOME/.local/bin/hat" audit >/dev/null 2>&1)
+check "audit gets the shared ticket skill" cmp -s "$repo/skills/ticket-self-critique/SKILL.md" "$HOME/.agent-hats/homes/audit-claude/skills/ticket-self-critique/SKILL.md"
 (cd "$work" && "$HOME/.local/bin/hat" live >/dev/null 2>&1); rc=$?
 check "relaunching live with linked skills exits 0" test "$rc" -eq 0
 
