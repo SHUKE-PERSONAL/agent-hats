@@ -105,15 +105,24 @@ command -v "$kind" >/dev/null 2>&1 || die "$kind not found on PATH"
 
 home="$HOME/.agent-hats/homes/$mode-$kind"
 
-# Copilot's token precedence is COPILOT_GITHUB_TOKEN > GH_TOKEN > GITHUB_TOKEN;
-# fall back to the gh CLI's OAuth token. Copilot rejects classic PATs, so a
-# ghp_ token is refused here rather than launching into a login failure.
+# A backend's auth_var names the only variable its token is read from; an
+# empty one stops the launch rather than fall back to another account.
+# Otherwise Copilot's token precedence is COPILOT_GITHUB_TOKEN > GH_TOKEN >
+# GITHUB_TOKEN; fall back to the gh CLI's OAuth token. Copilot rejects classic
+# PATs, so a ghp_ token is refused here rather than launching into a login failure.
 copilot_token() {
   local var token=""
-  for var in COPILOT_GITHUB_TOKEN GH_TOKEN GITHUB_TOKEN; do
+  if [ -n "$auth_var" ]; then
+    [[ "$auth_var" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || die "backend '$backend' has invalid auth_var '$auth_var'"
+    var="$auth_var"
     token="${!var:-}"
-    [ -n "$token" ] && break
-  done
+    [ -n "$token" ] || die "backend '$backend' needs its GitHub token in $var, which is not set"
+  else
+    for var in COPILOT_GITHUB_TOKEN GH_TOKEN GITHUB_TOKEN; do
+      token="${!var:-}"
+      [ -n "$token" ] && break
+    done
+  fi
   if [ -z "$token" ]; then
     var="gh auth token"
     token="$(gh auth token 2>/dev/null || true)"

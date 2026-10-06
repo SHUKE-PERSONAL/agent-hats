@@ -131,12 +131,12 @@ Both tables are optional and share mat's schema:
 ]}
 ```
 
-Only `nickname`, `kind`, `default_model`, `default_effort` and, for `claude`, `auth_var`,
-`base_url_var` (see [Claude token](#claude-token)) and `context_window_size` (see
-[Context window](#context-window)) are read; other fields (`config_dir`, `prompt_file`, …)
-are ignored, and an empty or missing model or effort falls to the
-built-in default. The entry's `kind` selects the kind unless one is given explicitly; an explicit
-kind that differs, or an entry kind other than `claude`/`copilot`, exits non-zero.
+Only `nickname`, `kind`, `default_model`, `default_effort`, `auth_var` (see
+[Claude token](#claude-token) and [Copilot token](#copilot-token)) and, for `claude`,
+`base_url_var` and `context_window_size` (see [Context window](#context-window)) are read; other
+fields (`config_dir`, `prompt_file`, …) are ignored, and an empty or missing model or effort falls
+to the built-in default. The entry's `kind` selects the kind unless one is given explicitly; an
+explicit kind that differs, or an entry kind other than `claude`/`copilot`, exits non-zero.
 
 Without `--backend` no table is read. The tables are only ever read, never written, and a lookup
 is best-effort: without `jq`, or when no table exists, the launcher warns and uses the built-in
@@ -216,11 +216,13 @@ server to a hat with `CLAUDE_CONFIG_DIR=~/.agent-hats/homes/live-claude claude m
 
 ### Copilot token
 
-Copilot signs in with a GitHub token taken from the first non-empty of `COPILOT_GITHUB_TOKEN`,
-`GH_TOKEN`, `GITHUB_TOKEN` (Copilot's own order), falling back to `gh auth token`. The token must
-be a **fine-grained PAT** (`github_pat_…`) or a **`gh` OAuth token** (`gho_…`): Copilot rejects
-classic PATs, so a token starting with `ghp_` exits non-zero before launching. With no token at
-all the launch exits non-zero naming `COPILOT_GITHUB_TOKEN`.
+Copilot signs in with a GitHub token read from the selected backend's `auth_var` (the name of an
+environment variable); if that variable is empty the launch exits non-zero naming it, rather than
+fall back to another account. Without `auth_var`, the token is the first non-empty of
+`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN` (Copilot's own order), falling back to
+`gh auth token`. The token must be a **fine-grained PAT** (`github_pat_…`) or a **`gh` OAuth
+token** (`gho_…`): Copilot rejects classic PATs, so a token starting with `ghp_` exits non-zero
+before launching. With no token at all the launch exits non-zero naming `COPILOT_GITHUB_TOKEN`.
 
 ### Folder trust
 

@@ -28,7 +28,7 @@ STUB
 chmod +x "$tmp/stub/claude"
 base_path="/usr/bin:/bin"
 export PATH="$tmp/stub:$base_path"
-unset ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL MY_TOK MY_URL
+unset ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL MY_TOK MY_URL MY_GH_TOK
 export CLAUDE_CODE_OAUTH_TOKEN=sk-test
 unset HAT_KIND HAT_BACKEND HAT_MODEL HAT_EFFORT
 
@@ -270,6 +270,8 @@ cat > "$matcfg/backends.json" <<'JSON'
   {"nickname": "badtok", "kind": "claude", "auth_var": "MY-TOK"},
   {"nickname": "third", "kind": "claude", "auth_var": "MY_TOK", "base_url_var": "MY_URL"},
   {"nickname": "cop", "kind": "copilot", "default_model": "gpt-5.6-luna", "default_effort": "max"},
+  {"nickname": "coptok", "kind": "copilot", "auth_var": "MY_GH_TOK"},
+  {"nickname": "copbad", "kind": "copilot", "auth_var": "MY-GH-TOK"},
   {"nickname": "grok", "kind": "grok", "default_model": "grok-4.6", "default_effort": "high"},
   {"nickname": "cw", "kind": "claude", "context_window_size": "350k"},
   {"nickname": "cwm", "kind": "claude", "context_window_size": "1m"},
@@ -312,6 +314,15 @@ launch --backend badtok
 check "invalid auth_var exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "invalid auth_var" <<<"$2"' _ "$rc" "$out"
 launch --backend cop
 check "entry kind selects copilot" test "$(args copilot 5)" = "ARG=--yolo ARG=--model ARG=gpt-5.6-luna ARG=--effort ARG=max "
+MY_GH_TOK=github_pat_mine GH_TOKEN=github_pat_other launch --backend coptok
+check "copilot auth_var supplies the token" grep -qx "COPILOT_GITHUB_TOKEN=github_pat_mine" "$HOME/copilot.log"
+launch --backend coptok
+check "unset copilot auth_var exits non-zero naming it" bash -c '[ "$1" -ne 0 ] && grep -qF "MY_GH_TOK, which is not set" <<<"$2"' _ "$rc" "$out"
+check "unset copilot auth_var does not fall back" test ! -e "$HOME/copilot.log"
+MY_GH_TOK=ghp_classic launch --backend coptok
+check "classic PAT in auth_var is refused" bash -c '[ "$1" -ne 0 ] && grep -qF "MY_GH_TOK holds a classic PAT" <<<"$2"' _ "$rc" "$out"
+launch --backend copbad
+check "invalid copilot auth_var exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "invalid auth_var" <<<"$2"' _ "$rc" "$out"
 launch --kind claude --backend cop
 check "explicit kind conflicting with entry exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "backend '\''cop'\'' has kind '\''copilot'\''" <<<"$2"' _ "$rc" "$out"
 launch --backend grok
