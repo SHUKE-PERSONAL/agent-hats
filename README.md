@@ -135,8 +135,8 @@ Only `nickname`, `kind`, `default_model`, `default_effort`, `auth_var` (see
 [Claude token](#claude-token) and [Copilot token](#copilot-token)) and, for `claude`,
 `base_url_var` and `context_window_size` (see [Context window](#context-window)) are read; other
 fields (`config_dir`, `prompt_file`, …) are ignored, and an empty or missing model or effort falls
-to the built-in default. The entry's `kind` selects the kind unless one is given explicitly; an explicit
-kind that differs, or an entry kind other than `claude`/`copilot`, exits non-zero.
+to the built-in default. The entry's `kind` selects the kind unless one is given explicitly; an
+explicit kind that differs, or an entry kind other than `claude`/`copilot`, exits non-zero.
 
 Without `--backend` no table is read. The tables are only ever read, never written, and a lookup
 is best-effort: without `jq`, or when no table exists, the launcher warns and uses the built-in
