@@ -37,15 +37,16 @@ wrapper that execs `bin/hat` from this checkout by absolute path — a generated
 symlink. Re-running `install.sh` is safe and overwrites it in place; re-run it after moving the
 checkout.
 
-It also installs the four constitutions from `constitutions/` into `~/.agent-hats/`:
+It also installs the four constitutions from `constitutions/` and the default backends table
+`backends.json` (see [Model and effort](#model-and-effort)) into `~/.agent-hats/`:
 
 - missing: copied in (`installed <path>`);
 - identical to the repo copy: left alone (`unchanged <path>`);
 - different (you edited it, or the repo copy changed): left alone (`kept <path> (differs from
   <repo copy>)`).
 
-Install never overwrites a constitution, so your edits are safe. To take a newer repo copy,
-merge it in yourself or delete `~/.agent-hats/<mode>.md` and re-run `install.sh`.
+Install never overwrites a constitution or the table, so your edits are safe. To take a newer
+repo copy, merge it in yourself or delete the file under `~/.agent-hats/` and re-run `install.sh`.
 
 Requires `bash` (Windows Git Bash works) and, depending on the kind, Claude Code (`claude`) or
 GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Claude first run](#claude-first-run),
@@ -100,14 +101,14 @@ Each launch:
 
 Launcher options (`--kind`, `--backend`, `--model`, `--effort`, each also as `--opt=value`) are
 read only before the first other argument; that argument and everything after it are appended to
-the agent invocation verbatim. A first bare word is the backend nickname, so `hat live ccz` means
-`hat live --backend ccz`, unless `--backend` was already given. A later bare word starts the agent
+the agent invocation verbatim. A first bare word is the backend nickname, so `hat live hard` means
+`hat live --backend hard`, unless `--backend` was already given. A later bare word starts the agent
 arguments, and so does `--`, which is dropped. To pass an initial prompt, put it after the nickname
 or after `--`:
 
 ```sh
-hat live ccz --effort high   # backend ccz, effort high
-hat live ccz "fix the bug"   # backend ccz, initial prompt
+hat live hard --effort low   # backend hard, effort low
+hat live hard "fix the bug"  # backend hard, initial prompt
 hat live -- "fix the bug"    # default backend, initial prompt
 ```
 
@@ -123,12 +124,24 @@ hat live -- "fix the bug"    # default backend, initial prompt
    `~/.agent-hats/backends.json`, then in mat's `~/.config/mat/backends.json`.
 3. Built-in defaults: `opus[1m]` / `medium` for `claude`, `gpt-5.5` / `medium` for `copilot`.
 
-Both tables are optional and share mat's schema:
+Both tables are optional and share mat's schema. `install.sh` seeds agent-hats' own from the
+repo's [`backends.json`](backends.json), one nickname per role on the team:
+
+| Nickname | Kind | Model | Effort | Context window |
+|---|---|---|---|---|
+| `claude` | `claude` | `opus[1m]` | `medium` | `256k` |
+| `sonnet` | `claude` | `sonnet[1m]` | `high` | `256k` |
+| `hard` | `claude` | `opus[1m]` | `high` | `400k` |
+| `pilotd` | `copilot` | `gpt-6-luna` | `max` | — |
+| `piloth` | `copilot` | `gpt-6.1-sol` | `high` | — |
+| `pilota` | `copilot` | `gpt-6-astra` | `medium` | — |
+
+A nickname found in this table is never looked up in mat's, so if you also use mat, rename or
+delete the seeded entries whose nicknames clash with yours. Each entry looks like:
 
 ```json
-{"backends": [
-  {"nickname": "sonnet", "kind": "claude", "default_model": "sonnet[1m]", "default_effort": "high"}
-]}
+{"nickname": "hard", "kind": "claude", "context_window_size": "400k",
+ "default_model": "opus[1m]", "default_effort": "high"}
 ```
 
 Only `nickname`, `kind`, `default_model`, `default_effort`, `auth_var` (see

@@ -47,10 +47,12 @@ for m in explore live adhoc audit; do
   check "install places $m.md" cmp -s "$repo/constitutions/$m.md" "$con/$m.md"
   check "$m.md states its role boundary" bash -c 'grep -q "^## Role boundary" "$1" && grep -q "^\*\*You do:\*\*" "$1" && grep -q "^\*\*You must not:\*\*" "$1"' _ "$con/$m.md"
 done
+check "install places backends.json" cmp -s "$repo/backends.json" "$con/backends.json"
+check "shipped backends.json is a valid table" jq -e '.backends | type == "array" and length > 0 and all(.kind == "claude" or .kind == "copilot")' "$repo/backends.json"
 check "constitutions avoid mat lifecycle and proprietary terms" \
   bash -c '! grep -niE "mat (live|explore|duo|adhoc)|supervisor|relay|baton|tmux|auto-refine|shuke" "$@"' _ "$repo"/constitutions/*.md
 out="$(bash "$repo/install.sh")"
-check "reinstall reports constitutions unchanged" test "$(grep -c '^unchanged ' <<<"$out")" -eq 4
+check "reinstall reports constitutions and table unchanged" test "$(grep -c '^unchanged ' <<<"$out")" -eq 5
 check "reinstall makes no backups" test -z "$(find "$con" -name '*.bak')"
 echo "my edit" >> "$con/live.md"
 out="$(bash "$repo/install.sh")"
@@ -60,6 +62,12 @@ check "kept constitution is reported" grep -qF "kept $con/live.md (differs from"
 rm -f "$con/live.md"
 bash "$repo/install.sh" >/dev/null
 check "deleted constitution is reinstalled" cmp -s "$repo/constitutions/live.md" "$con/live.md"
+echo '{"backends":[]}' > "$con/backends.json"
+out="$(bash "$repo/install.sh")"
+check "modified backends.json is kept" grep -qx '{"backends":\[\]}' "$con/backends.json"
+check "kept backends.json is reported" grep -qF "kept $con/backends.json (differs from" <<<"$out"
+# The model/effort tests below start with no table of agent-hats' own.
+rm -f "$con/backends.json"
 
 # --- missing constitution ---
 rm -f "$con/explore.md"
@@ -364,6 +372,12 @@ echo 'not json' > "$HOME/.agent-hats/backends.json"
 launch --backend sonnet
 check "malformed own table is skipped with warning" bash -c '[ "$1" -eq 0 ] && grep -qF "malformed $2" <<<"$3"' _ "$rc" "$HOME/.agent-hats/backends.json" "$out"
 check "malformed own table falls to mat" grep -qx "ARG=--model=sonnet\[1m\]" "$HOME/claude.log"
+
+cp "$repo/backends.json" "$HOME/.agent-hats/backends.json"
+launch --backend hard
+check "shipped table: hard" bash -c '[ "$1" = "ARG=--model=opus[1m] ARG=--effort ARG=high " ] && grep -qx "CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000" "$2"' _ "$(args claude 3)" "$HOME/claude.log"
+launch --backend pilotd
+check "shipped table: pilotd" test "$(args copilot 5)" = "ARG=--yolo ARG=--model ARG=gpt-6-luna ARG=--effort ARG=max "
 rm -f "$HOME/.agent-hats/backends.json"
 
 cp -p "$matcfg/backends.json" "$tmp/mat-backends.json"
