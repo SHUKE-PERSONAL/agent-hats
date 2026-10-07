@@ -21,8 +21,8 @@ shift
 
 # Launcher options are recognised only before the first agent argument, which
 # is where `hat explore --kind copilot` puts them; everything from there passes
-# through. A first bare word names the backend (`hat live ccz` =
-# `hat live --backend ccz`) unless --backend is already given; a later bare
+# through. A first bare word names the backend (`hat live hard` =
+# `hat live --backend hard`) unless --backend is already given; a later bare
 # word, or `--`, starts the agent args.
 kind="${HAT_KIND:-}"
 backend="${HAT_BACKEND:-}"
