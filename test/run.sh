@@ -80,7 +80,7 @@ check "CLAUDE_CONFIG_DIR set" grep -qxF "CLAUDE_CONFIG_DIR=$cfg" "$HOME/claude.l
 check "auto-compact window set" grep -qx "CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000" "$HOME/claude.log"
 expected_args="ARG=--model=opus[1m]
 ARG=--effort
-ARG=medium
+ARG=high
 ARG=--dangerously-skip-permissions
 ARG=--foo
 ARG=two words"
@@ -196,9 +196,9 @@ check "token exported" grep -qx "COPILOT_GITHUB_TOKEN=github_pat_fine" "$HOME/co
 check "copilot explore gets its shipped skill" test -f "$cop/skills/ticket-self-critique/SKILL.md"
 expected_args="ARG=--yolo
 ARG=--model
-ARG=gpt-5.5
+ARG=gpt-6.1-sol
 ARG=--effort
-ARG=medium
+ARG=high
 ARG=--foo
 ARG=two words"
 check "copilot defaults then passthrough args" test "$(grep '^ARG=' "$HOME/copilot.log")" = "$expected_args"
@@ -256,15 +256,15 @@ args() { grep '^ARG=' "$HOME/$1.log" | head -n "$2" | tr '\n' ' '; }
 launch() { rm -f "$HOME/claude.log" "$HOME/copilot.log"; out="$(cd "$work" && "$HOME/.local/bin/hat" explore "$@" 2>&1)"; rc=$?; }
 
 launch
-check "no table: built-in defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+check "no table: built-in defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=high "
 launch --backend sonnet
 check "nickname without any table warns" bash -c '[ "$1" -eq 0 ] && grep -qF "no readable backends.json" <<<"$2"' _ "$rc" "$out"
-check "nickname without any table uses defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+check "nickname without any table uses defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=high "
 
 matcfg="$HOME/.config/mat"; mkdir -p "$matcfg"
 cat > "$matcfg/backends.json" <<'JSON'
 {"backends": [
-  {"nickname": "sonnet", "kind": "claude", "default_model": "sonnet[1m]", "default_effort": "high", "config_dir": "claudew", "prompt_file": "X.md"},
+  {"nickname": "sonnet", "kind": "claude", "default_model": "sonnet[1m]", "default_effort": "low", "config_dir": "claudew", "prompt_file": "X.md"},
   {"nickname": "bare", "kind": "claude", "default_model": "", "default_effort": null},
   {"nickname": "tok", "kind": "claude", "auth_var": "MY_TOK"},
   {"nickname": "badtok", "kind": "claude", "auth_var": "MY-TOK"},
@@ -282,12 +282,12 @@ JSON
 mat_before="$(ls -laR --time-style=full-iso "$matcfg"; cksum "$matcfg/backends.json")"
 
 launch
-check "table present, no nickname: defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+check "table present, no nickname: defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=high "
 launch --backend sonnet --foo
-check "nickname resolves mat entry" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=high ARG=--dangerously-skip-permissions ARG=--foo "
+check "nickname resolves mat entry" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=--foo "
 check "mat config_dir is not inherited" grep -qxF "CLAUDE_CONFIG_DIR=$cfg" "$HOME/claude.log"
 HAT_BACKEND=sonnet launch
-check "HAT_BACKEND selects the entry" test "$(args claude 3)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=high "
+check "HAT_BACKEND selects the entry" test "$(args claude 3)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low "
 launch --backend=sonnet --model opus --effort=low
 check "flags override the table" test "$(args claude 3)" = "ARG=--model=opus ARG=--effort ARG=low "
 HAT_MODEL=m1 HAT_EFFORT=e1 launch --backend sonnet
@@ -295,12 +295,12 @@ check "env overrides the table" test "$(args claude 3)" = "ARG=--model=m1 ARG=--
 HAT_MODEL=m1 launch --model m2
 check "flag overrides env" test "$(args claude 1)" = "ARG=--model=m2 "
 launch --model opus
-check "flag overrides defaults without table lookup" test "$(args claude 3)" = "ARG=--model=opus ARG=--effort ARG=medium "
+check "flag overrides defaults without table lookup" test "$(args claude 3)" = "ARG=--model=opus ARG=--effort ARG=high "
 launch --backend bare
-check "empty entry fields fall back per field" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+check "empty entry fields fall back per field" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=high "
 MY_TOK=sk-mine CLAUDE_CODE_OAUTH_TOKEN=sk-default launch --backend tok
 check "backend auth_var supplies the token" grep -qx "ANTHROPIC_AUTH_TOKEN=sk-mine" "$HOME/claude.log"
-check "backend token keeps default model" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+check "backend token keeps default model" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=high "
 CLAUDE_CODE_OAUTH_TOKEN=sk-default launch --backend tok
 check "unset auth_var warns naming it" bash -c '[ "$1" -eq 0 ] && grep -qF "MY_TOK is not set" <<<"$2"' _ "$rc" "$out"
 MY_TOK=k MY_URL=https://example.test launch --backend third
@@ -328,13 +328,13 @@ check "explicit kind conflicting with entry exits non-zero" bash -c '[ "$1" -ne 
 launch --backend grok
 check "unsupported entry kind exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "accepted values: claude, copilot" <<<"$2"' _ "$rc" "$out"
 launch sonnet --foo
-check "bare word selects the backend" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=high ARG=--dangerously-skip-permissions ARG=--foo "
+check "bare word selects the backend" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=--foo "
 launch sonnet --effort low "two words"
 check "options still read after the nickname" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=two words "
 launch --backend sonnet prompt
-check "bare word after --backend passes through" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=high ARG=--dangerously-skip-permissions ARG=prompt "
+check "bare word after --backend passes through" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=prompt "
 launch -- "fix it" --model x
-check "-- starts agent args and is dropped" test "$(grep '^ARG=' "$HOME/claude.log" | tr '\n' ' ')" = "ARG=--model=opus[1m] ARG=--effort ARG=medium ARG=--dangerously-skip-permissions ARG=fix it ARG=--model ARG=x "
+check "-- starts agent args and is dropped" test "$(grep '^ARG=' "$HOME/claude.log" | tr '\n' ' ')" = "ARG=--model=opus[1m] ARG=--effort ARG=high ARG=--dangerously-skip-permissions ARG=fix it ARG=--model ARG=x "
 HAT_BACKEND=cop launch sonnet
 check "bare word wins over HAT_BACKEND" grep -qx "ARG=--model=sonnet\[1m\]" "$HOME/claude.log"
 launch nosuch
@@ -371,7 +371,7 @@ printf '{"backends": [' > "$matcfg/backends.json"
 launch --backend sonnet
 check "malformed mat table does not abort" test "$rc" -eq 0
 check "malformed mat table warns" grep -qF "malformed $matcfg/backends.json" <<<"$out"
-check "malformed mat table uses defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+check "malformed mat table uses defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=high "
 cp -p "$tmp/mat-backends.json" "$matcfg/backends.json"
 
 # jq absent: PATH holds only the stubs and wrappers for the tools the launcher needs
@@ -381,7 +381,7 @@ rm -f "$HOME/claude.log"
 out="$(PATH="$tmp/stub:$nojq" "$HOME/.local/bin/hat" explore --backend sonnet 2>&1)"; rc=$?
 check "no jq: launch still succeeds" test "$rc" -eq 0
 check "no jq: warning names jq" grep -qF "jq not found" <<<"$out"
-check "no jq: built-in defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+check "no jq: built-in defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=high "
 nojq_home="$HOME/.agent-hats/homes/live-claude"; rm -rf "$nojq_home"
 out="$(cd "$work" && PATH="$tmp/stub:$nojq" "$HOME/.local/bin/hat" live 2>&1)"; rc=$?
 check "no jq: fresh home still seeded" bash -c '[ "$1" -eq 0 ] && jq -e ".hasCompletedOnboarding == true" "$2/.claude.json" >/dev/null && jq -e ".skipDangerousModePermissionPrompt == true" "$2/settings.json" >/dev/null' _ "$rc" "$nojq_home"

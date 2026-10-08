@@ -94,8 +94,8 @@ if [ -n "$backend" ]; then
 fi
 kind="${kind:-claude}"
 case "$kind" in
-  claude)  : "${model:=opus[1m]}" "${effort:=medium}" ;;
-  copilot) : "${model:=gpt-5.5}" "${effort:=medium}" ;;
+  claude)  : "${model:=opus[1m]}" "${effort:=high}" ;;
+  copilot) : "${model:=gpt-6.1-sol}" "${effort:=high}" ;;
 esac
 
 src="$HOME/.agent-hats/$mode.md"

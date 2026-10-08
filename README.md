@@ -121,7 +121,7 @@ hat live -- "fix the bug"    # default backend, initial prompt
 1. `--model` / `--effort`, else `HAT_MODEL` / `HAT_EFFORT`.
 2. The backend entry selected by `--backend <nickname>` (else `HAT_BACKEND`), looked up in
    `~/.agent-hats/backends.json`, then in mat's `~/.config/mat/backends.json`.
-3. Built-in defaults: `opus[1m]` / `medium` for `claude`, `gpt-5.5` / `medium` for `copilot`.
+3. Built-in defaults: `opus[1m]` / `high` for `claude`, `gpt-6.1-sol` / `high` for `copilot`.
 
 Both tables are optional and share mat's schema:
 
