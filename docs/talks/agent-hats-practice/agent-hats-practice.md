@@ -124,7 +124,7 @@ You can raise it, but I don't recommend going past 400K. A long context looks sw
 How do you set this up? One table, ~/.agent-hats/backends.json, with one nickname per "team member": which CLI, which model, how hard it thinks, how much context it keeps.
 With a strong model like Opus 5.5, medium effort is enough for everyday work. Save high or xhigh for the genuinely hard problems — a tricky root cause, a risky refactor — and give that member a bigger context window too.
 Same subscription, same token budget — but now it behaves like a small team with different strengths.
-Copilot fits in the same table: "kind": "copilot" makes that nickname launch Copilot CLI instead of Claude. That matters here — most of us already have a Copilot licence.
+Copilot fits in the same table: "kind": "copilot" makes that nickname launch Copilot CLI instead of Claude. That matters here — most of us already have a Copilot licence. An entry can also name its token variable with "auth_var" — handy for a second account.
 I haven't found a way to set Copilot's context window from the command line; you can still pick it in Copilot's UI. Model and effort are the main levers anyway.
 The table comes from a side project of mine, my-ai-team — another talk, if you're interested. Neither Claude Code nor Copilot reads it directly; the next slides show what does.
 -->
@@ -161,6 +161,36 @@ So what Claude actually receives is: the global CLAUDE.md (kept empty), plus the
 
 ---
 
+<!-- _class: dense -->
+
+## Without hats: a custom home by hand
+
+```sh
+mkdir -p ~/roles/live/skills
+cp ~/my-rules/live.md ~/roles/live/CLAUDE.md
+ln -s ~/.claude/skills/* ~/roles/live/skills/   # skills don't follow you
+
+CLAUDE_CONFIG_DIR=~/roles/live \
+CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000 \
+ANTHROPIC_AUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN \
+  claude --model='opus[1m]' --effort medium --dangerously-skip-permissions
+```
+
+…then onboarding, bypass warning, folder trust per repo.
+**Per role. Again for Copilot.**
+
+<!--
+~1 min
+Tweaks 1 to 4 all work with plain Claude Code. Here's what that looks like for one role, by hand.
+A fresh home is a fresh install: onboarding, theme, the bypass-permissions warning, and the trust dialog again in every repo you open.
+Your personal skills live in ~/.claude/skills, so the new home doesn't see them — you link them in yourself. On Windows without Developer Mode, Git Bash's ln -s silently makes a copy instead, so later edits to your skills never arrive; you need a junction.
+The token line is a trap: if the home ever ran /login, a stale .credentials.json beats CLAUDE_CODE_OAUTH_TOKEN, so you pass it as ANTHROPIC_AUTH_TOKEN instead.
+And the status line, a different context cap per backend… Multiply by four roles, then do it all again for Copilot: COPILOT_HOME, copilot-instructions.md, its own trust list.
+It works, but every line here is something `hat` now does for you on each launch.
+-->
+
+---
+
 ## 5 — agent-hats
 
 ![w:260](../../../assets/logo.svg)
@@ -174,7 +204,9 @@ So what Claude actually receives is: the global CLAUDE.md (kept empty), plus the
 
 <!--
 ~1.5 min
-agent-hats packages tweaks 1 to 4 into one command. Same harness, different hat.
+agent-hats packages tweaks 1 to 4 — everything on the previous slide — into one command. Same harness, different hat.
+Hats also get skills: explore and audit bring a ticket self-critique skill, and live links your personal skills from ~/.claude/skills — with a junction on Windows when symlinks aren't allowed, so no admin rights needed.
+One thing it doesn't carry over: user-scope MCP servers. A repo's .mcp.json works in every hat; add a personal server to a hat with `CLAUDE_CONFIG_DIR=~/.agent-hats/homes/live-claude claude mcp add …`.
 - explore: reads code, reproduces bugs, finds root causes, and writes a ticket a delivery agent can work from. It may not write delivery code.
 - live: the hands-on generalist — what you already do with Claude every day. I use it for smaller changes; when the scope grows, I have explore draft a proper ticket first.
 - adhoc: delivery. Give it a well-defined ticket: it plans, reviews its own plan, implements, critiques its own diff, tests locally, and opens a draft PR. Plan, implementation, review and test are each written to the ticket folder, so a tester can see a week later how it was checked.
@@ -196,8 +228,8 @@ Needs: `bash`, `claude` or `copilot` · optional `jq`
 
 <!--
 ~45s
-The installer writes one command, `hat`, into ~/.local/bin, and copies the four constitutions into ~/.agent-hats/.
-Re-running it is safe: if a constitution has changed, your old copy is backed up to .bak first.
+The installer writes one command, `hat`, into ~/.local/bin, and copies any of the four constitutions you don't have yet into ~/.agent-hats/.
+Re-running it is safe: it never overwrites a constitution, so your edits stay. To take a newer copy from the repo, merge it in yourself, or delete yours and re-run.
 On Windows, Git Bash is enough.
 -->
 
