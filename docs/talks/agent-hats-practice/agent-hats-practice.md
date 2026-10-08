@@ -46,6 +46,27 @@ A few small changes make it last longer, behave better, and do different jobs we
 
 ---
 
+## What makes a good harness?
+
+Claude Code and Copilot CLI already are — **with the right settings**
+
+- **Custom home** — one role, one config
+- **Hooks and skills** — the routine runs itself
+- **A constitution** — clear rules, no babysitting
+
+*Micro-managed agents get lazy: they ask about everything.*
+
+<!--
+~1 min
+A couple of weeks ago our Director, Hamid, asked me: what makes a good harness?
+My answer: the ones we already have. Claude Code and GitHub Copilot CLI are good harnesses — with the right settings. Both support a custom config home, hooks and skills very well. Set up properly, they get work done on their own, without babysitting.
+I'm not saying babysitting is bad. But with a constitution written for one kind of task, an agent working on its own can do more — and do it better — than one we talk to all the time.
+What I've found: when we micro-manage an agent, it gets lazy. It asks us to decide everything, even questions with obvious answers. That wastes our time, and it makes us angry.
+So next, I'll show you the settings I use, why they work, and how.
+-->
+
+---
+
 ## Five tweaks over bare `claude`
 
 1. Log in once
