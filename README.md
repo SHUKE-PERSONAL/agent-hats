@@ -47,6 +47,12 @@ It also installs the four constitutions from `constitutions/` into `~/.agent-hat
 Install never overwrites a constitution, so your edits are safe. To take a newer repo copy,
 merge it in yourself or delete `~/.agent-hats/<mode>.md` and re-run `install.sh`.
 
+It also copies `backends.example.json` to `~/.agent-hats/backends.json` (see
+[Model and effort](#model-and-effort)) under the same rule — installed when missing, otherwise
+reported `unchanged` or `kept` — with one exception: when it is missing and mat's
+`~/.config/mat/backends.json` exists, it is `skipped`, because `hat` reads its own table first and the example's nicknames
+would shadow mat's. Edit the table to match your models.
+
 Requires `bash` (Windows Git Bash works) and, depending on the kind, Claude Code (`claude`) or
 GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Claude first run](#claude-first-run),
 [Folder trust](#folder-trust) and [Model and effort](#model-and-effort)).
@@ -121,7 +127,7 @@ hat live -- "fix the bug"    # default backend, initial prompt
 1. `--model` / `--effort`, else `HAT_MODEL` / `HAT_EFFORT`.
 2. The backend entry selected by `--backend <nickname>` (else `HAT_BACKEND`), looked up in
    `~/.agent-hats/backends.json`, then in mat's `~/.config/mat/backends.json`.
-3. Built-in defaults: `opus[1m]` / `medium` for `claude`, `gpt-5.5` / `medium` for `copilot`.
+3. Built-in defaults: `opus[1m]` / `high` for `claude`, `gpt-6.1-sol` / `high` for `copilot`.
 
 Both tables are optional and share mat's schema:
 

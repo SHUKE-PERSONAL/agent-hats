@@ -39,9 +39,40 @@ My everyday AI dev setup
 
 <!--
 ~30s
+Hello, everyone.
 Today I'd like to show you the setup I use every day.
-We already use skills and MCP servers to ease our work, but most of us still run bare `claude`. And our Claude subscription is usually a basic one — it doesn't last long under heavy use.
+We already use skills and MCPs to ease our work, but most of us still run bare `claude`.
+-->
+
+---
+
+## What makes a good harness?
+
+Claude Code and Copilot CLI already are — **with the right settings**
+
+- **A custom home** — one role, one config
+- **Hooks and skills** — the routine runs itself
+- **A constitution** — clear rules, no babysitting
+
+*Micro-managed agents get lazy: they ask about everything.*
+
+<!--
+~2 min
+A couple of weeks ago our Director asked me: what makes a good harness?
+
+My answer: the ones we already have. Claude Code and GitHub Copilot CLI are good harnesses — with the right settings. Both support a custom config home, hooks and skills very well. With the right settings, they get work done on their own, without babysitting.
+I'm not saying babysitting is bad. But with a constitution written for one kind of task, an agent working on its own can do more — and do it better — than when we babysit it all the time.
+What I've found: when we micro-manage an agent, it gets lazy. It asks us to decide everything, even questions with obvious answers. That wastes our time, and it makes us angry.
+
+There are two ways to get things done with agents. The first way: you drive, the agent assists. Just like what we did with Cursor in the early days. Many people insist on this way, as it gives us a feeling of "I still control everything". That isn't bad, but it is not that efficient. We deliver things a little bit quicker than before, but not that much faster.
+
+The other way is different: we give a well-defined ticket to a delivery agent, and it does the planning, the plan review, the implementation, the implementation review, and creates the PR on its own. That's the way I take.
+
+You might ask: how do you control the code quality? By talking with a pair-review agent, I find the defects the delivery agent missed, and I fully understand the outcome. By doing local testing with a tester agent, I gain confidence in the outcome.
+
+By the way, our Claude subscription is usually a basic one — it doesn't last long under heavy use.
 A few small changes make it last longer, behave better, and do different jobs well.
+So, next, I'll show you the settings I use, why they work, and how they work.
 -->
 
 ---
@@ -50,13 +81,13 @@ A few small changes make it last longer, behave better, and do different jobs we
 
 1. Log in once
 2. Cap the context window
-3. One subscription, a whole team
-4. One role, one constitution
-5. Wear a hat
+3. One role, one constitution
+4. Wear a hat
+5. One subscription, a whole team
 
 <!--
 ~30s
-The first four work with plain Claude Code today. The fifth packages them into one command: `hat`.
+The first three work with plain Claude Code today. The fourth packages them into one command: `hat`. The fifth builds on `hat`: one subscription, a whole team.
 -->
 
 ---
@@ -74,7 +105,7 @@ export COPILOT_GITHUB_TOKEN=github_pat_...
 <!--
 ~1 min
 `claude setup-token` gives you a long-lived OAuth token for your subscription. Put it in your shell profile, and Claude Code stops asking you to log in — it just works.
-Copilot works the same way. In GitHub, Settings → Developer settings, create a fine-grained personal access token with only the "Copilot Requests" permission. I'll show you how. (Classic `ghp_` tokens don't work.)
+Copilot works the same way. In GitHub, Settings → Developer settings, create a fine-grained personal access token with only the "Copilot Requests" permission. I'll show you how.
 Treat both like passwords — they are your subscriptions. Never commit them, never paste them into a chat.
 -->
 
@@ -90,48 +121,18 @@ Bigger context ≠ better answers
 
 <!--
 ~1.5 min
-Every turn re-sends the whole conversation. A 1M-token session that never compacts burns through your usage limit, and quality drops as the context fills with stale material.
-I cap it at 256K: Claude Code compacts the session when the context approaches 256K. Even a small subscription like ours lasts much longer.
-The status line makes it visible: tokens held against the 256K cap, not the 1M window — the percentage is how much of the cap you've used.
-You can raise it, but I don't recommend going past 400K. A long context looks sweet and tastes bitter: beyond 400K, Claude gets noticeably dumber and eats the 5-hour limit much faster.
+A 1M context window is a good thing — why do we cap it? You might ask.
+Every time we send a message to Claude, and on every tool call, Claude sends the whole conversation to the server.
+A 1M-token session that never compacts burns through your usage limit, and quality drops as the context fills with stale material.
+I cap it at 256K: set CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000, and Claude Code compacts the session when the context approaches the limit I set. Even a small subscription like ours lasts much longer.
+The status line — it ships with agent-hats — makes it visible: tokens held against the 256K cap, not the 1M window — the percentage is how much of the cap you've used.
+Sure, you can raise it higher — 300K, 350K — but I don't recommend going past 400K. A long context looks sweet and tastes bitter: beyond 400K, Claude gets noticeably dumber and eats the 5-hour limit much faster.
+Yes, we can always call /compact manually, but we humans are good at forgetting things.
 -->
 
 ---
 
-<!-- _class: dense -->
-
-## 3 — One subscription, a whole team
-
-```json
-{"backends": [
-  {"nickname": "claude", "kind": "claude", "context_window_size": "256k",
-   "default_model": "opus[1m]", "default_effort": "medium"},
-  {"nickname": "sonnet", "kind": "claude", "context_window_size": "256k",
-   "default_model": "sonnet[1m]", "default_effort": "high"},
-  {"nickname": "hard", "kind": "claude", "context_window_size": "400k",
-   "default_model": "opus[1m]", "default_effort": "high"},
-  {"nickname": "pilotd", "kind": "copilot",
-   "default_model": "gpt-6-luna", "default_effort": "max"},
-  {"nickname": "piloth", "kind": "copilot",
-   "default_model": "gpt-6.1-sol", "default_effort": "high"},
-  {"nickname": "pilota", "kind": "copilot",
-   "default_model": "gpt-6-astra", "default_effort": "medium"}
-]}
-```
-
-<!--
-~1.5 min
-How do you set this up? One table, ~/.agent-hats/backends.json, with one nickname per "team member": which CLI, which model, how hard it thinks, how much context it keeps.
-With a strong model like Opus 5.5, medium effort is enough for everyday work. Save high or xhigh for the genuinely hard problems — a tricky root cause, a risky refactor — and give that member a bigger context window too.
-Same subscription, same token budget — but now it behaves like a small team with different strengths.
-Copilot fits in the same table: "kind": "copilot" makes that nickname launch Copilot CLI instead of Claude. That matters here — most of us already have a Copilot licence.
-I haven't found a way to set Copilot's context window from the command line; you can still pick it in Copilot's UI. Model and effort are the main levers anyway.
-The table comes from a side project of mine, my-ai-team — another talk, if you're interested. Neither Claude Code nor Copilot reads it directly; the next slides show what does.
--->
-
----
-
-## 4 — One role, one constitution
+## 3 — One role, one constitution
 
 <div class="cols">
 <div class="card old">
@@ -152,8 +153,8 @@ Its own config home
 
 <!--
 ~1.5 min
-A constitution is a standing rules file for the agent: what this role does, and what it must not do.
-With bare Claude, one global CLAUDE.md tries to serve every job — investigating, coding, one-off tasks — and the rules fight each other.
+Basically, a constitution is a rules file for the agent: what it should do, what it shouldn't, and what it must not do.
+With bare Claude, one global CLAUDE.md tries to serve every job — it easily grows big, and fast. The bad thing is, agents don't follow a long constitution well.
 Instead: one constitution per role, each in its own config home (CLAUDE_CONFIG_DIR for Claude, COPILOT_HOME for Copilot). You get tighter control, and each file stays small.
 One catch: empty your default `~/.claude/CLAUDE.md`. Claude always loads it first, even when started with a custom home.
 So what Claude actually receives is: the global CLAUDE.md (kept empty), plus the role's constitution, plus the repo's own CLAUDE.md. That's why a constitution should be short and to the point — I keep mine under 15K characters.
@@ -161,7 +162,37 @@ So what Claude actually receives is: the global CLAUDE.md (kept empty), plus the
 
 ---
 
-## 5 — agent-hats
+<!-- _class: dense -->
+
+## Without hats: a custom home by hand
+
+```sh
+mkdir -p ~/roles/live/skills
+cp ~/my-rules/live.md ~/roles/live/CLAUDE.md
+ln -s ~/.claude/skills/* ~/roles/live/skills/   # skills don't follow you
+
+CLAUDE_CONFIG_DIR=~/roles/live \
+CLAUDE_CODE_AUTO_COMPACT_WINDOW=256000 \
+ANTHROPIC_AUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN \
+  claude --model='opus[1m]' --effort medium --dangerously-skip-permissions
+```
+
+…then onboarding, bypass warning, folder trust per repo.
+**Per role. Again for Copilot.**
+
+<!--
+~1 min
+Tweaks 1 to 3 all work with plain Claude Code. Here's what that looks like for one role, by hand.
+A fresh home is a fresh install: onboarding, theme, the bypass-permissions warning, and the trust dialog again in every repo you open.
+Your personal skills live in ~/.claude/skills, so the new home doesn't see them — you link them in yourself. On Windows, Git Bash's ln -s silently makes a copy by default, so later edits to your skills never arrive. A real symlink needs two things: Developer Mode turned on (Settings → System → For developers), and `export MSYS=winsymlinks:nativestrict` in your shell. Without Developer Mode, use a junction instead: `mklink /J`.
+The token line is a trap: if the home ever ran /login, a stale .credentials.json beats CLAUDE_CODE_OAUTH_TOKEN, so you pass it as ANTHROPIC_AUTH_TOKEN instead.
+And the status line, a different model and context cap per job… Multiply by four roles, then do it all again for Copilot: COPILOT_HOME, copilot-instructions.md, its own trust list.
+It works, but every line here is something `hat` now does for you on each launch.
+-->
+
+---
+
+## 4 — agent-hats
 
 ![w:260](../../../assets/logo.svg)
 
@@ -174,7 +205,9 @@ So what Claude actually receives is: the global CLAUDE.md (kept empty), plus the
 
 <!--
 ~1.5 min
-agent-hats packages tweaks 1 to 4 into one command. Same harness, different hat.
+agent-hats packages tweaks 1 to 3 — everything on the previous slide — into one command. Same harness, different hat.
+Hats also get skills: explore and audit bring a ticket self-critique skill, and live links your personal skills from ~/.claude/skills — with a junction on Windows when symlinks aren't allowed, so no admin rights needed.
+One thing it doesn't carry over: user-scope MCP servers. A repo's .mcp.json works in every hat; add a personal server to a hat with `CLAUDE_CONFIG_DIR=~/.agent-hats/homes/live-claude claude mcp add …`.
 - explore: reads code, reproduces bugs, finds root causes, and writes a ticket a delivery agent can work from. It may not write delivery code.
 - live: the hands-on generalist — what you already do with Claude every day. I use it for smaller changes; when the scope grows, I have explore draft a proper ticket first.
 - adhoc: delivery. Give it a well-defined ticket: it plans, reviews its own plan, implements, critiques its own diff, tests locally, and opens a draft PR. Plan, implementation, review and test are each written to the ticket folder, so a tester can see a week later how it was checked.
@@ -190,15 +223,50 @@ Plain bash: Linux, macOS, and Windows Git Bash.
 ```sh
 git clone https://github.com/SHUKE-PERSONAL/agent-hats.git
 cd agent-hats && ./install.sh
+export PATH="$HOME/.local/bin:$PATH"   # if needed
 ```
 
 Needs: `bash`, `claude` or `copilot` · optional `jq`
 
 <!--
 ~45s
-The installer writes one command, `hat`, into ~/.local/bin, and copies the four constitutions into ~/.agent-hats/.
-Re-running it is safe: if a constitution has changed, your old copy is backed up to .bak first.
+The installer writes one command, `hat`, into ~/.local/bin, and copies any of the four constitutions you don't have yet into ~/.agent-hats/.
+It also drops in an example ~/.agent-hats/backends.json — the one on the next slide — unless you already have one.
+Re-running it is safe: it never overwrites a constitution or your backends.json, so your edits stay. To take a newer copy from the repo, merge it in yourself, or delete yours and re-run.
+The installer doesn't touch your .bashrc. If `hat` says "command not found", add ~/.local/bin to your PATH — on macOS and Git Bash it isn't there by default.
 On Windows, Git Bash is enough.
+-->
+
+---
+
+<!-- _class: dense -->
+
+## 5 — One subscription, a whole team
+
+```json
+{"backends": [
+  {"nickname": "easy", "kind": "claude", "context_window_size": "256k",
+   "default_model": "opus[1m]", "default_effort": "medium"},
+  {"nickname": "sonnet", "kind": "claude", "context_window_size": "256k",
+   "default_model": "sonnet[1m]", "default_effort": "high"},
+  {"nickname": "hard", "kind": "claude", "context_window_size": "400k",
+   "default_model": "opus[1m]", "default_effort": "high"},
+  {"nickname": "daily", "kind": "copilot",
+   "default_model": "gpt-6-luna", "default_effort": "max"},
+  {"nickname": "sol", "kind": "copilot",
+   "default_model": "gpt-6.1-sol", "default_effort": "high"},
+  {"nickname": "astra", "kind": "copilot",
+   "default_model": "gpt-6-astra", "default_effort": "medium"}
+]}
+```
+
+<!--
+~1.5 min
+The installer gave you this file, ~/.agent-hats/backends.json. It turns one subscription into a team, with one nickname per "team member": which CLI, which model, how hard it thinks, how much context it keeps.
+With a strong model like Opus 5.5, normally medium effort is enough for everyday work. Save high or xhigh for the genuinely hard problems — a tricky root cause, a risky refactor — and give that member a bigger context window too.
+Same subscription, same token budget — but now it behaves like a small team with different strengths.
+Copilot fits in the same table: "kind": "copilot" makes that nickname launch Copilot CLI instead of Claude. That matters here — most of us already have a Copilot licence. An entry can also name its token variable with "auth_var" — handy for a second account.
+I haven't found a way to set Copilot's context window from the command line; you can still pick it in Copilot's UI. Model and effort are the main levers anyway.
 -->
 
 ---
@@ -210,13 +278,13 @@ hat explore                 # shape a ticket
 hat live                    # pair on a small change
 hat live hard               # same hat, "hard" backend
 hat adhoc -- "do MT-12345"  # deliver one ticket
-hat explore pilota          # same hat, Copilot CLI
+hat explore astra           # Copilot CLI, gpt-6-astra
 hat audit                   # one audit pass, tickets only
 ```
 
 <!--
 ~1.5 min — live demo here if time allows; have a recording as backup.
-The first word after the hat is a backend nickname from the table; its kind decides whether Claude or Copilot starts — no extra flag. With no nickname you get Opus, medium effort, 256K. Anything after `--` is the initial prompt.
+The first word after the hat is a backend nickname from the table; its kind decides whether Claude or Copilot starts — no extra flag. With no nickname you get Opus, high effort, 256K. Anything after `--` is the initial prompt.
 A fresh home starts without onboarding or trust prompts — the launcher pre-answers them.
 -->
 
@@ -228,9 +296,9 @@ A fresh home starts without onboarding or trust prompts — the launcher pre-ans
 
 <!--
 ~1 min
-Explore turns a fuzzy JIRA ticket into something precise: problem, approach, acceptance criteria. It writes it to ~/.agent-hats/tickets/<KEY>/ and prints the path. I check it.
-I open a second tab, start `hat adhoc`, and paste that path. Adhoc delivers against the ticket, and I test it locally.
-I review the diff — with the agent's help — before anything leaves my machine. Only then do I mark the draft PR ready for the normal peer review.
+Explore turns a fuzzy JIRA ticket into a well-defined, precise issue: problem, approach, clear acceptance criteria. It writes it to ~/.agent-hats/tickets/<KEY>/ and prints the path. I check it.
+I open a second tab, start `hat adhoc`, and paste that path. Adhoc delivers against the ticket, and I test it locally with a live agent.
+I review the diff — with a pair-review skill — before anything leaves my machine. Only then do I mark the draft PR ready for the normal peer review.
 Nothing in our process is skipped. The agent just does the legwork.
 -->
 
@@ -261,14 +329,14 @@ The installer only manages the four shipped hats; it never touches yours.
 # Start small
 
 **1.** `claude setup-token`
-**2.** Edit `~/.agent-hats/backends.json`
-**3.** Run `hat live`
+**2.** `./install.sh`, then `hat live`
+**3.** Edit `~/.agent-hats/backends.json` (optional)
 
-*Questions?*
+*Thank you!*
 
 <!--
-~30s + Q&A
-You don't need all of it on day one. A token and a backends table take five minutes and pay off immediately.
-Then try one hat. I'd start with live: move your own CLAUDE.md to ~/.agent-hats/live.md, empty ~/.claude/CLAUDE.md, and run `hat live`.
+~30s
+You don't need all of it on day one. A token takes a minute and pays off immediately.
+Then try one hat. I'd start with live: you can use your own CLAUDE.md as ~/.agent-hats/live.md. Back up your ~/.claude/CLAUDE.md, then empty it, and run `hat live`.
 The repo is public and MIT-licensed; issues and pull requests welcome.
 -->
