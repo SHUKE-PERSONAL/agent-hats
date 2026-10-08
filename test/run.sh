@@ -50,7 +50,7 @@ done
 check "constitutions avoid mat lifecycle and proprietary terms" \
   bash -c '! grep -niE "mat (live|explore|duo|adhoc)|supervisor|relay|baton|tmux|auto-refine|shuke" "$@"' _ "$repo"/constitutions/*.md
 out="$(bash "$repo/install.sh")"
-check "reinstall reports constitutions unchanged" test "$(grep -c '^unchanged ' <<<"$out")" -eq 4
+check "reinstall reports constitutions unchanged" test "$(grep -c '^unchanged .*\.md$' <<<"$out")" -eq 4
 check "reinstall makes no backups" test -z "$(find "$con" -name '*.bak')"
 echo "my edit" >> "$con/live.md"
 out="$(bash "$repo/install.sh")"
@@ -60,6 +60,26 @@ check "kept constitution is reported" grep -qF "kept $con/live.md (differs from"
 rm -f "$con/live.md"
 bash "$repo/install.sh" >/dev/null
 check "deleted constitution is reinstalled" cmp -s "$repo/constitutions/live.md" "$con/live.md"
+
+# --- example backend table ---
+check "install places the example backends.json" cmp -s "$repo/backends.example.json" "$con/backends.json"
+check "example backends.json is a valid table" jq -e '(.backends | length > 0) and all(.backends[]; .kind == "claude" or .kind == "copilot")' "$con/backends.json"
+out="$(bash "$repo/install.sh")"
+check "reinstall reports backends.json unchanged" grep -qxF "unchanged $con/backends.json" <<<"$out"
+echo '{"backends": []}' > "$con/backends.json"
+out="$(bash "$repo/install.sh")"
+check "edited backends.json is kept" test "$(cat "$con/backends.json")" = '{"backends": []}'
+check "kept backends.json is reported" grep -qF "kept $con/backends.json (differs from" <<<"$out"
+rm -f "$con/backends.json"
+mkdir -p "$HOME/.config/mat" && echo '{"backends": []}' > "$HOME/.config/mat/backends.json"
+out="$(bash "$repo/install.sh")"
+check "mat table present: no example backends.json" test ! -e "$con/backends.json"
+check "skipped backends.json is reported" grep -qF "skipped $con/backends.json" <<<"$out"
+cp "$repo/backends.example.json" "$con/backends.json"
+out="$(bash "$repo/install.sh")"
+check "own and mat tables: own reported unchanged" grep -qxF "unchanged $con/backends.json" <<<"$out"
+rm -f "$con/backends.json"
+rm -rf "$HOME/.config/mat"
 
 # --- missing constitution ---
 rm -f "$con/explore.md"
@@ -472,6 +492,13 @@ nulled='{"session_id":"s1","model":{"display_name":"Opus"},"cwd":"/nowhere/proj"
 check "null usage holds the last value" test "$(sl "$nulled" 256000)" = "Opus | proj | 64k/256k (25%)"
 check "null usage without history shows a placeholder" test "$(sl "${nulled/s1/s2}" 256000)" = "Opus | proj | --/256k"
 check "empty input prints Claude" test "$(printf '' | bash "$repo/bin/hat-statusline")" = "Claude"
+
+# --- the example table resolves ---
+cp "$repo/backends.example.json" "$con/backends.json"
+launch hard
+check "example backend resolves" bash -c '[ "$1" = "ARG=--model=opus[1m] ARG=--effort ARG=high " ] && grep -qx "CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000" "$2"' _ "$(args claude 3)" "$HOME/claude.log"
+launch easy
+check "example easy backend is medium" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
 
 echo
 [ "$fails" -eq 0 ] && echo "all tests passed" || { echo "$fails test(s) failed"; exit 1; }

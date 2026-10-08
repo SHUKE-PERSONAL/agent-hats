@@ -1,0 +1,14 @@
+{"backends": [
+  {"nickname": "easy", "kind": "claude", "context_window_size": "256k",
+   "default_model": "opus[1m]", "default_effort": "medium"},
+  {"nickname": "sonnet", "kind": "claude", "context_window_size": "256k",
+   "default_model": "sonnet[1m]", "default_effort": "high"},
+  {"nickname": "hard", "kind": "claude", "context_window_size": "400k",
+   "default_model": "opus[1m]", "default_effort": "high"},
+  {"nickname": "daily", "kind": "copilot",
+   "default_model": "gpt-6-luna", "default_effort": "max"},
+  {"nickname": "sol", "kind": "copilot",
+   "default_model": "gpt-6.1-sol", "default_effort": "high"},
+  {"nickname": "astra", "kind": "copilot",
+   "default_model": "gpt-6-astra", "default_effort": "medium"}
+]}
