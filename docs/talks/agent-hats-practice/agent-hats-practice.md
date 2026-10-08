@@ -208,11 +208,11 @@ It works, but every line here is something `hat` now does for you on each launch
 agent-hats packages tweaks 1 to 3 — everything on the previous slide — into one command. Same harness, different hat.
 Hats also get skills: explore and audit bring a ticket self-critique skill, and live links your personal skills from ~/.claude/skills — with a junction on Windows when symlinks aren't allowed, so no admin rights needed.
 One thing it doesn't carry over: user-scope MCP servers. A repo's .mcp.json works in every hat; add a personal server to a hat with `CLAUDE_CONFIG_DIR=~/.agent-hats/homes/live-claude claude mcp add …`.
-- explore: reads code, reproduces bugs, finds root causes, and writes a ticket a delivery agent can work from. It may not write delivery code.
-- live: the hands-on generalist — what you already do with Claude every day. I use it for smaller changes; when the scope grows, I have explore draft a proper ticket first.
-- adhoc: delivery. Give it a well-defined ticket: it plans, reviews its own plan, implements, critiques its own diff, tests locally, and opens a draft PR. Plan, implementation, review and test are each written to the ticket folder, so a tester can see a week later how it was checked.
-- audit: one bounded pass over recently merged PRs and the code around them. It files tickets and never touches the code. The first time I ran it on the DFX repo, it caught a production bug.
-Every hat follows its constitution. None of them merges, marks a PR ready, deploys, or touches JIRA — the draft PR waits for me.
+- explore: reads code, reproduces bugs, finds root causes, and writes a ticket a delivery agent can work from. It is not allowed to write delivery code.
+- live: the hands-on generalist — what you already do with Claude every day. I use it for smaller changes; when the scope becomes bigger, I use the explore hat to draft a ticket first.
+- adhoc: the only delivery agent. Give it a well-defined ticket: it plans, reviews its own plan, implements, critiques its own implementation, tests locally, and opens a draft PR. Plan, implementation, review and test are each written to the ticket folder, so a tester can see a week later how it was checked.
+- audit: this agent is for QA people. It works on its own; you don't need to talk to it. Run hat audit, and it starts checking recently merged PRs and the code around them. It files tickets and never touches the code. The first time I ran it on the DFX repo, it caught a production bug.
+Every hat follows its constitution. By default, none of them merges, marks a PR ready, deploys, or touches JIRA — the draft PR waits for me. You can easily extend it by simply changing its constitution file or giving it more tools.
 Plain bash: Linux, macOS, and Windows Git Bash.
 -->
 
@@ -235,6 +235,8 @@ It also drops in an example ~/.agent-hats/backends.json — the one on the next 
 Re-running it is safe: it never overwrites a constitution or your backends.json, so your edits stay. To take a newer copy from the repo, merge it in yourself, or delete yours and re-run.
 The installer doesn't touch your .bashrc. If `hat` says "command not found", add ~/.local/bin to your PATH — on macOS and Git Bash it isn't there by default.
 On Windows, Git Bash is enough.
+
+By the way, different deployments can have different constitution files. For example, on your own PC, for your side projects, you can allow the delivery agent to merge the PR when CI gives a green light. It is totally up to you.
 -->
 
 ---
@@ -244,6 +246,7 @@ On Windows, Git Bash is enough.
 ## 5 — One subscription, a whole team
 
 ```json
+// ~/.agent-hats/backends.json
 {"backends": [
   {"nickname": "easy", "kind": "claude", "context_window_size": "256k",
    "default_model": "opus[1m]", "default_effort": "medium"},
@@ -266,7 +269,7 @@ The installer gave you this file, ~/.agent-hats/backends.json. It turns one subs
 With a strong model like Opus 5.5, normally medium effort is enough for everyday work. Save high or xhigh for the genuinely hard problems — a tricky root cause, a risky refactor — and give that member a bigger context window too.
 Same subscription, same token budget — but now it behaves like a small team with different strengths.
 Copilot fits in the same table: "kind": "copilot" makes that nickname launch Copilot CLI instead of Claude. That matters here — most of us already have a Copilot licence. An entry can also name its token variable with "auth_var" — handy for a second account.
-I haven't found a way to set Copilot's context window from the command line; you can still pick it in Copilot's UI. Model and effort are the main levers anyway.
+I haven't found a way to set Copilot's context window from the command line; we can always change it in Copilot's UI. Model and effort are the main levers anyway.
 -->
 
 ---
@@ -274,7 +277,7 @@ I haven't found a way to set Copilot's context window from the command line; you
 ## Use
 
 ```sh
-hat explore                 # shape a ticket
+hat explore                 # create or refine a ticket
 hat live                    # pair on a small change
 hat live hard               # same hat, "hard" backend
 hat adhoc -- "do MT-12345"  # deliver one ticket
