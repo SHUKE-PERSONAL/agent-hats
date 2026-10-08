@@ -183,7 +183,7 @@ ANTHROPIC_AUTH_TOKEN=$CLAUDE_CODE_OAUTH_TOKEN \
 ~1 min
 Tweaks 1 to 4 all work with plain Claude Code. Here's what that looks like for one role, by hand.
 A fresh home is a fresh install: onboarding, theme, the bypass-permissions warning, and the trust dialog again in every repo you open.
-Your personal skills live in ~/.claude/skills, so the new home doesn't see them — you link them in yourself. On Windows without Developer Mode, Git Bash's ln -s silently makes a copy instead, so later edits to your skills never arrive; you need a junction.
+Your personal skills live in ~/.claude/skills, so the new home doesn't see them — you link them in yourself. On Windows, Git Bash's ln -s silently makes a copy by default, so later edits to your skills never arrive. A real symlink needs two things: Developer Mode turned on (Settings → System → For developers), and `export MSYS=winsymlinks:nativestrict` in your shell. Without Developer Mode, use a junction instead: `mklink /J`.
 The token line is a trap: if the home ever ran /login, a stale .credentials.json beats CLAUDE_CODE_OAUTH_TOKEN, so you pass it as ANTHROPIC_AUTH_TOKEN instead.
 And the status line, a different context cap per backend… Multiply by four roles, then do it all again for Copilot: COPILOT_HOME, copilot-instructions.md, its own trust list.
 It works, but every line here is something `hat` now does for you on each launch.
