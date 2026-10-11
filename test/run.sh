@@ -486,14 +486,8 @@ mh="$HOME/.agent-hats/homes/merge-claude/projects"
 mkdir -p "$shared/p"
 echo only > "$mh/p/only.jsonl"
 echo same > "$mh/p/same.jsonl"; cp -p "$mh/p/same.jsonl" "$shared/p/same.jsonl"
-printf 'line1
-' > "$shared/p/grown.jsonl"; printf 'line1
-line2
-' > "$mh/p/grown.jsonl"
-printf 'line1
-line2
-' > "$shared/p/behind.jsonl"; printf 'line1
-' > "$mh/p/behind.jsonl"
+printf 'line1\n' > "$shared/p/grown.jsonl"; printf 'line1\nline2\n' > "$mh/p/grown.jsonl"
+printf 'line1\nline2\n' > "$shared/p/behind.jsonl"; printf 'line1\n' > "$mh/p/behind.jsonl"
 echo shared-index > "$shared/p/MEMORY.md"; echo hat-index > "$mh/p/MEMORY.md"
 touch -d '2026-01-01' "$shared/p/MEMORY.md"; touch -d '2026-01-02' "$mh/p/MEMORY.md"
 mkdir -p "$mh/p/memory" && echo mem > "$mh/p/memory/note.md"
@@ -502,10 +496,8 @@ check "merging an existing projects folder exits 0" test "$rc" -eq 0
 check "a merged home is linked" test -L "$mh"
 check "a file only the hat had is merged" grep -qx only "$shared/p/only.jsonl"
 check "a nested file is merged" grep -qx mem "$shared/p/memory/note.md"
-check "a transcript that grew in the hat is taken" test "$(cat "$shared/p/grown.jsonl")" = "$(printf 'line1
-line2')"
-check "a transcript that grew in the default home is kept" test "$(cat "$shared/p/behind.jsonl")" = "$(printf 'line1
-line2')"
+check "a transcript that grew in the hat is taken" test "$(cat "$shared/p/grown.jsonl")" = "$(printf 'line1\nline2')"
+check "a transcript that grew in the default home is kept" test "$(cat "$shared/p/behind.jsonl")" = "$(printf 'line1\nline2')"
 check "a diverged file keeps the default home's copy, even when older" grep -qx shared-index "$shared/p/MEMORY.md"
 check "the hat's diverged copy is kept aside" grep -qx hat-index "$mh.pre-share/p/MEMORY.md"
 check "the merge is reported" grep -qF "merged $mh into $shared; the old folder is kept as $mh.pre-share" <<<"$out"
@@ -529,10 +521,7 @@ check "projects that cannot be linked do not stop the launch" test "$rc" -eq 0
 check "a home that cannot link keeps its own folder" bash -c '[ -d "$1" ] && [ ! -L "$1" ] && grep -qx kept "$1/p/s.jsonl" && [ ! -e "$1.pre-share" ]' _ "$nl"
 check "a failed link is named in a warning" grep -qF "could not link $nl to $shared" <<<"$out"
 mk_home failcp p; echo kept > "$HOME/.agent-hats/homes/failcp-claude/projects/p/failcp.jsonl"
-printf '#!/bin/sh
-case "$*" in *failcp-claude/projects*) exit 1 ;; esac
-exec /usr/bin/cp "$@"
-' > "$tmp/noln/cp"; chmod +x "$tmp/noln/cp"
+printf '#!/bin/sh\ncase "$*" in *failcp-claude/projects*) exit 1 ;; esac\nexec /usr/bin/cp "$@"\n' > "$tmp/noln/cp"; chmod +x "$tmp/noln/cp"
 out="$(cd "$work" && PATH="$tmp/noln:$PATH" "$HOME/.local/bin/hat" failcp 2>&1)"; rc=$?
 rm -f "$tmp/noln/cp"
 fc="$HOME/.agent-hats/homes/failcp-claude/projects"
