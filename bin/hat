@@ -236,8 +236,8 @@ compact_window() {
 }
 
 # Link directory $2 to $1: a symlink; where symlinks are not allowed (Windows without
-# Developer Mode), a junction, which needs no privilege; failing that, a copy that follows links.
-link_skill() {
+# Developer Mode), a junction, which needs no privilege. Fails when neither works.
+link_dir() {
   local src="$1" dst="$2"
   # nativestrict: a real symlink or a failure, never Git Bash's silent deep copy.
   MSYS=winsymlinks:nativestrict ln -s "$src" "$dst" 2>/dev/null && return
@@ -246,7 +246,73 @@ link_skill() {
     MSYS2_ARG_CONV_EXCL='*' "$COMSPEC" /c mklink /J "$(cygpath -w "$dst")" \
       "$(cygpath -w "$(readlink -f "$src")")" >/dev/null 2>&1 && return
   fi
-  cp -RL "$src" "$dst"
+  return 1
+}
+
+# A skill that cannot be linked is copied, following links.
+link_skill() {
+  link_dir "$1" "$2" || cp -RL "$1" "$2"
+}
+
+# merge_sessions <from> <to>: copy into <to> each file of <from> it lacks, and
+# replace a file of <to> only when <from>'s copy is that file with more appended
+# (a transcript that grew). Any other difference keeps <to>'s file; the file is
+# listed in `diverged`. Fails on the first file it cannot copy.
+merge_sessions() {
+  local from="$1" to="$2" f rel ours theirs
+  diverged=()
+  while IFS= read -r -d '' f; do
+    rel="${f#"$from"/}"
+    if [ ! -e "$to/$rel" ]; then
+      mkdir -p "$(dirname "$to/$rel")" && cp -p "$f" "$to/$rel" || return 1
+    elif ! cmp -s "$f" "$to/$rel"; then
+      ours="$(wc -c < "$f")" theirs="$(wc -c < "$to/$rel")"
+      if [ "$ours" -gt "$theirs" ] && head -c "$theirs" "$f" | cmp -s - "$to/$rel"; then
+        cp -p "$f" "$to/$rel" || return 1
+      elif ! { [ "$ours" -lt "$theirs" ] && head -c "$ours" "$to/$rel" | cmp -s - "$f"; }; then
+        diverged+=("$rel")
+      fi
+    fi
+  done < <(find "$from" -type f -print0)
+}
+
+# Link the home's session folder ($1: projects for Claude, which also holds its
+# auto-memory; session-state for Copilot) to the default home's ($2), so every
+# hat's sessions show in `--resume` and session viewers, and every Claude hat
+# shares one auto-memory per project. A home that already has its own folder is
+# merged in once with merge_sessions, then kept beside the link as
+# <name>.pre-share, so a file that diverged loses nothing; a second pass after
+# linking picks up what an agent still running on the home wrote meanwhile. A
+# link the home already has, wherever it points, is left alone; where no link
+# can be made, the home keeps its own folder, never a copy that would drift.
+share_sessions() {
+  local name="$1" shared="$2" own="$home/$1" aside=""
+  diverged=()
+  [ -L "$own" ] && return 0
+  mkdir -p "$shared"
+  rmdir "$own" 2>/dev/null || true  # an empty folder needs no merge
+  if [ -d "$own" ]; then
+    merge_sessions "$own" "$shared" || {
+      warn "cannot merge $own into $shared; this hat keeps its own $name folder until a later launch"
+      return 0
+    }
+    aside="$own.pre-share"
+    [ -e "$aside" ] && aside="$aside.$(date +%Y%m%d%H%M%S)"
+    # Another agent on this home may hold a file open; Windows then refuses the move.
+    mv "$own" "$aside" 2>/dev/null || {
+      warn "cannot move $own aside (in use?); this hat keeps its own $name folder until a later launch"
+      return 0
+    }
+  fi
+  if ! link_dir "$shared" "$own"; then
+    [ -z "$aside" ] || mv "$aside" "$own"
+    warn "could not link $own to $shared; this hat keeps its own $name folder"
+    return 0
+  fi
+  [ -z "$aside" ] && return 0
+  merge_sessions "$aside" "$shared" || warn "could not copy every late change from $aside into $shared"
+  warn "merged $own into $shared; the old folder is kept as $aside"
+  [ "${#diverged[@]}" -eq 0 ] || warn "these files differ, so $shared keeps its own and $aside has the hat's: ${diverged[*]}"
 }
 
 # Skills: those shipped in this checkout's skills/ whose hats file lists the
@@ -290,6 +356,7 @@ case "$kind" in
     cp -f "$src" "$home/CLAUDE.md"
     claude_seed_home
     seed_skills "$HOME/.claude/skills"
+    share_sessions projects "$HOME/.claude/projects"
     claude_auth
     export CLAUDE_CONFIG_DIR="$home"
     CLAUDE_CODE_AUTO_COMPACT_WINDOW="$(compact_window)"
@@ -303,6 +370,7 @@ case "$kind" in
     cp -f "$src" "$home/copilot-instructions.md"
     copilot_trust_cwd
     seed_skills "$HOME/.copilot/skills"
+    share_sessions session-state "$HOME/.copilot/session-state"
     export COPILOT_HOME="$home"
     export COPILOT_SETUP_TERMINAL=false
     export COPILOT_GITHUB_TOKEN="$token"

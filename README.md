@@ -6,7 +6,8 @@ Same harness, different hat. `hat explore`, `hat live`, `hat adhoc` and `hat aud
 GitHub Copilot CLI wearing a hat — and a hat is more than a name: each one carries a
 [constitution](#constitution-contract), a rules file that says what the role does and must not do.
 That is why one agent, under different hats, does different jobs well. Each hat also gets its own
-config home, so the roles never bleed into each other. Plain `bash`; runs on Linux, macOS and
+config home, so the roles never bleed into each other; only their [sessions](#sessions) are
+pooled in the default home. Plain `bash`; runs on Linux, macOS and
 Windows Git Bash.
 
 Four hats ship with the repo; any Markdown file you drop into `~/.agent-hats/` is another
@@ -219,6 +220,24 @@ Deleting a link (`rm -rf`) removes only the link, not your skill.
 MCP servers are not carried over: user-scope servers live in the default home's `.claude.json`,
 which a hat home does not read. A repo's `.mcp.json` works in every hat; add a user-scope
 server to a hat with `CLAUDE_CONFIG_DIR=~/.agent-hats/homes/live-claude claude mcp add …`.
+
+### Sessions
+
+Every hat keeps its sessions in the default home, so `claude --resume`, `copilot --resume` and
+session viewers see them all wherever they were started. On every launch the home's session
+folder is linked to the default home's — `<home>/projects` to `~/.claude/projects` (transcripts
+and Claude's per-project auto-memory, which every Claude hat and a plain `claude` therefore
+share) and `<home>/session-state` to `~/.copilot/session-state`. Copilot's search index,
+`session-store.db`, stays per home.
+
+A home that already has a session folder of its own is merged in once: files the default home
+lacks are copied, and where both have a file that differs the newer one wins, since transcripts
+only grow. The launcher names those files, and keeps the old folder beside the link as
+`projects.pre-share` (or `session-state.pre-share`); delete it once you are happy. If another
+agent on the same home has a file open, Windows refuses the move and the merge waits for a later
+launch. A home whose session folder is already a link, wherever it points, is left alone. The
+link is a symlink or, on Windows without one, a junction; if neither works the home keeps its
+own folder, never a copy.
 
 ### Copilot token
 
