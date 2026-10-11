@@ -110,7 +110,7 @@ check "defaults then passthrough args" test "$(grep '^ARG=' "$HOME/claude.log")"
 echo "v2" > "$HOME/.agent-hats/explore.md"
 "$HOME/.local/bin/hat" explore >/dev/null
 check "second run refreshes CLAUDE.md" grep -qx v2 "$cfg/CLAUDE.md"
-check "no symlinks after launch" test -z "$(find "$HOME" -type l)"
+check "no symlinks after launch but the shared projects" test -z "$(find "$HOME" -type l ! -path "$cfg/projects")"
 
 # --- other modes map to their homes ---
 echo live > "$HOME/.agent-hats/live.md"; echo adhoc > "$HOME/.agent-hats/adhoc.md"
@@ -224,6 +224,14 @@ ARG=two words"
 check "copilot defaults then passthrough args" test "$(grep '^ARG=' "$HOME/copilot.log")" = "$expected_args"
 (cd "$work" && "$HOME/.local/bin/hat" audit --kind copilot >/dev/null 2>&1)
 check "copilot audit starts with -i and its prompt" bash -c 'grep -A1 -x "ARG=-i" "$1" | grep -qx "ARG=Run one audit pass."' _ "$HOME/copilot.log"
+check "a copilot home links its session-state to the default home" test -L "$cop/session-state"
+mkdir -p "$cop/session-state/c1" && echo c1 > "$cop/session-state/c1/events.jsonl"
+check "a copilot session lands in the default home" grep -qx c1 "$HOME/.copilot/session-state/c1/events.jsonl"
+ah="$HOME/.agent-hats/homes/adhoc-copilot/session-state"
+mkdir -p "$ah/c2" && echo c2 > "$ah/c2/events.jsonl"
+out="$(cd "$work" && "$HOME/.local/bin/hat" adhoc --kind copilot 2>&1)"
+check "an existing copilot session-state is merged and linked" bash -c '[ -L "$1" ] && grep -qx c2 "$2/c2/events.jsonl" && [ -d "$1.pre-share" ]' _ "$ah" "$HOME/.copilot/session-state"
+check "the copilot merge is reported" grep -qF "merged $ah into $HOME/.copilot/session-state" <<<"$out"
 check "cwd seeded into trustedFolders" bash -c 'grep -v "^[[:space:]]*//" "$1" | jq -e --arg d "$2" ".trustedFolders == [\$d]" >/dev/null' _ "$cop/config.json" "$trust_dir"
 (cd "$work" && "$HOME/.local/bin/hat" explore --kind=copilot); rc=$?
 check "--kind=copilot form works" test "$rc" -eq 0
@@ -466,6 +474,68 @@ rm -f "$tmp/noln/cp"
 check "an uncopyable personal skill does not stop live" test "$rc" -eq 0
 check "an uncopyable personal skill is named in a warning" grep -qF "skipped personal skill broken" <<<"$out"
 check "an uncopyable personal skill leaves nothing behind" test ! -e "$live_home/skills/broken"
+
+# --- shared projects ---
+shared="$HOME/.claude/projects"
+check "a fresh home links its projects to the default home" test -L "$ex_home/projects"
+mkdir -p "$ex_home/projects/p1" && echo s1 > "$ex_home/projects/p1/s1.jsonl"
+check "a session written in a hat lands in the default home" grep -qx s1 "$shared/p1/s1.jsonl"
+mk_home() { echo "$1" > "$HOME/.agent-hats/$1.md"; mkdir -p "$HOME/.agent-hats/homes/$1-claude/projects/$2"; }
+mk_home merge p
+mh="$HOME/.agent-hats/homes/merge-claude/projects"
+mkdir -p "$shared/p"
+echo only > "$mh/p/only.jsonl"
+echo same > "$mh/p/same.jsonl"; cp -p "$mh/p/same.jsonl" "$shared/p/same.jsonl"
+printf 'line1\n' > "$shared/p/grown.jsonl"; printf 'line1\nline2\n' > "$mh/p/grown.jsonl"
+printf 'line1\nline2\n' > "$shared/p/behind.jsonl"; printf 'line1\n' > "$mh/p/behind.jsonl"
+echo shared-index > "$shared/p/MEMORY.md"; echo hat-index > "$mh/p/MEMORY.md"
+touch -d '2026-01-01' "$shared/p/MEMORY.md"; touch -d '2026-01-02' "$mh/p/MEMORY.md"
+mkdir -p "$mh/p/memory" && echo mem > "$mh/p/memory/note.md"
+out="$(cd "$work" && "$HOME/.local/bin/hat" merge 2>&1)"; rc=$?
+check "merging an existing projects folder exits 0" test "$rc" -eq 0
+check "a merged home is linked" test -L "$mh"
+check "a file only the hat had is merged" grep -qx only "$shared/p/only.jsonl"
+check "a nested file is merged" grep -qx mem "$shared/p/memory/note.md"
+check "a transcript that grew in the hat is taken" test "$(cat "$shared/p/grown.jsonl")" = "$(printf 'line1\nline2')"
+check "a transcript that grew in the default home is kept" test "$(cat "$shared/p/behind.jsonl")" = "$(printf 'line1\nline2')"
+check "a diverged file keeps the default home's copy, even when older" grep -qx shared-index "$shared/p/MEMORY.md"
+check "the hat's diverged copy is kept aside" grep -qx hat-index "$mh.pre-share/p/MEMORY.md"
+check "the merge is reported" grep -qF "merged $mh into $shared; the old folder is kept as $mh.pre-share" <<<"$out"
+check "only diverged files are named" bash -c 'grep -q "has the hat'"'"'s: p/MEMORY.md$" <<<"$1"' _ "$out"
+check "identical files are not reported" bash -c '! grep -q "same.jsonl" <<<"$1"' _ "$out"
+out="$(cd "$work" && "$HOME/.local/bin/hat" merge 2>&1)"
+check "a linked home is not merged again" bash -c '! grep -q merged <<<"$1" && [ "$(ls -d "$2".pre-share* | wc -l)" -eq 1 ]' _ "$out" "$mh"
+mk_home empty x; rmdir "$HOME/.agent-hats/homes/empty-claude/projects/x"
+(cd "$work" && "$HOME/.local/bin/hat" empty >/dev/null 2>&1)
+check "an empty projects folder is just linked" bash -c '[ -L "$1/projects" ] && [ ! -e "$1/projects.pre-share" ]' _ "$HOME/.agent-hats/homes/empty-claude"
+echo own > "$HOME/.agent-hats/own.md"; mkdir -p "$HOME/.agent-hats/homes/own-claude" "$tmp/elsewhere"
+ln -s "$tmp/elsewhere" "$HOME/.agent-hats/homes/own-claude/projects" 2>/dev/null || true
+if [ -L "$HOME/.agent-hats/homes/own-claude/projects" ]; then
+  (cd "$work" && "$HOME/.local/bin/hat" own >/dev/null 2>&1)
+  check "a home's own projects link is left alone" test "$(readlink "$HOME/.agent-hats/homes/own-claude/projects")" = "$tmp/elsewhere"
+fi
+mk_home nolink p; echo kept > "$HOME/.agent-hats/homes/nolink-claude/projects/p/s.jsonl"
+out="$(cd "$work" && PATH="$tmp/noln:$PATH" COMSPEC="$tmp/noln/ln" "$HOME/.local/bin/hat" nolink 2>&1)"; rc=$?
+nl="$HOME/.agent-hats/homes/nolink-claude/projects"
+check "projects that cannot be linked do not stop the launch" test "$rc" -eq 0
+check "a home that cannot link keeps its own folder" bash -c '[ -d "$1" ] && [ ! -L "$1" ] && grep -qx kept "$1/p/s.jsonl" && [ ! -e "$1.pre-share" ]' _ "$nl"
+check "a failed link is named in a warning" grep -qF "could not link $nl to $shared" <<<"$out"
+mk_home failcp p; echo kept > "$HOME/.agent-hats/homes/failcp-claude/projects/p/failcp.jsonl"
+printf '#!/bin/sh\ncase "$*" in *failcp-claude/projects*) exit 1 ;; esac\nexec /usr/bin/cp "$@"\n' > "$tmp/noln/cp"; chmod +x "$tmp/noln/cp"
+out="$(cd "$work" && PATH="$tmp/noln:$PATH" "$HOME/.local/bin/hat" failcp 2>&1)"; rc=$?
+rm -f "$tmp/noln/cp"
+fc="$HOME/.agent-hats/homes/failcp-claude/projects"
+check "a merge that cannot copy does not stop the launch" test "$rc" -eq 0
+check "a merge that cannot copy keeps the home's own folder" bash -c '[ ! -L "$1" ] && grep -qx kept "$1/p/failcp.jsonl" && [ ! -e "$1.pre-share" ]' _ "$fc"
+check "a merge that cannot copy is named in a warning" grep -qF "cannot merge $fc into $shared" <<<"$out"
+if command -v cygpath >/dev/null && [ -n "${COMSPEC:-}" ]; then
+  mk_home junction p; echo j > "$HOME/.agent-hats/homes/junction-claude/projects/p/j.jsonl"
+  (cd "$work" && PATH="$tmp/noln:$PATH" "$HOME/.local/bin/hat" junction >/dev/null 2>&1)
+  check "on Windows projects are joined where symlinks fail" test -L "$HOME/.agent-hats/homes/junction-claude/projects"
+  check "a joined projects folder reaches the default home" grep -qx j "$HOME/.agent-hats/homes/junction-claude/projects/p/j.jsonl"
+  (cd "$work" && PATH="$tmp/noln:$PATH" "$HOME/.local/bin/hat" junction >/dev/null 2>&1)
+  check "a joined projects folder is not merged again" test "$(ls -d "$HOME/.agent-hats/homes/junction-claude/projects.pre-share"* | wc -l)" -eq 1
+fi
 
 # --- audit start prompt ---
 (cd "$work" && "$HOME/.local/bin/hat" audit >/dev/null 2>&1)
