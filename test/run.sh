@@ -35,10 +35,12 @@ unset HAT_KIND HAT_BACKEND HAT_MODEL HAT_EFFORT
 # --- install ---
 bash "$repo/install.sh" >/dev/null
 check "install creates hat" test -x "$HOME/.local/bin/hat"
-check "install creates nothing else in bin" test "$(ls "$HOME/.local/bin")" = hat
-first="$(cat "$HOME/.local/bin/hat")"
-check "install output is idempotent" bash -c 'bash "$1" >/dev/null && [ "$(cat "$2/hat")" = "$3" ]' _ "$repo/install.sh" "$HOME/.local/bin" "$first"
+check "install creates hatcheck" test -x "$HOME/.local/bin/hatcheck"
+check "install creates nothing else in bin" test "$(ls "$HOME/.local/bin" | tr '\n' ' ')" = "hat hatcheck "
+first="$(cat "$HOME/.local/bin/hat" "$HOME/.local/bin/hatcheck")"
+check "install output is idempotent" bash -c 'bash "$1" >/dev/null && [ "$(cat "$2/hat" "$2/hatcheck")" = "$3" ]' _ "$repo/install.sh" "$HOME/.local/bin" "$first"
 check "hat is a thin wrapper" grep -qx "exec $(printf %q "$repo/bin/hat") \"\\\$@\"" "$HOME/.local/bin/hat"
+check "hatcheck is a thin wrapper" grep -qx "exec $(printf %q "$repo/bin/hatcheck") \"\\\$@\"" "$HOME/.local/bin/hatcheck"
 check "no symlinks after install" test -z "$(find "$HOME" -type l)"
 
 # --- constitutions ---
@@ -569,6 +571,110 @@ launch hard
 check "example backend resolves" bash -c '[ "$1" = "ARG=--model=opus[1m] ARG=--effort ARG=high " ] && grep -qx "CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000" "$2"' _ "$(args claude 3)" "$HOME/claude.log"
 launch easy
 check "example easy backend is medium" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=medium "
+
+# --- hatcheck ---
+unset DISPLAY WAYLAND_DISPLAY HATCHECK_VIEW
+export PAGER=cat
+tk="$tmp/tickets"
+hcbin="$HOME/.local/bin/hatcheck"
+hc() { AGENT_HATS_TICKETS_DIR="$tk" "$hcbin" "$@"; }
+mkdir -p "$tk/MT-1" "$tk/MT-2/artifacts" "$tk/NOSTAGE/artifacts"
+echo "mt1 plan body" > "$tk/MT-1/mt-1-plan.md"
+echo "mt1 impl two NEEDLE" > "$tk/MT-1/mt-1-impl-v2.md"
+echo "mt1 impl ten" > "$tk/MT-1/mt-1-impl-v10.md"
+echo "mt2 issue body" > "$tk/MT-2/mt-2-issue.md"
+echo "mt2 impl one" > "$tk/MT-2/mt-2-impl.md"
+echo "mt2 impl two" > "$tk/MT-2/mt-2-impl-v2.md"
+echo "mt2 test body" > "$tk/MT-2/mt-2-test.md"
+touch -t 202603020000 "$tk"/MT-1/*.md
+touch -t 202603010000 "$tk"/MT-2/*.md
+touch -t 202603030000 "$tk/MT-2/mt-2-test.md"
+check "find lists tickets newest first" test "$(hc find)" = "$(printf 'MT-2\tissue impl test\t2026-03-03\nMT-1\tplan impl\t2026-03-02')"
+check "find filters by content, case-insensitive" test "$(hc find needle)" = "$(printf 'MT-1\tplan impl\t2026-03-02')"
+check "find with no match prints nothing, exit 0" bash -c 'out="$(AGENT_HATS_TICKETS_DIR="$1" "$2" find nothing-matches-this)" && [ -z "$out" ]' _ "$tk" "$hcbin"
+mkdir -p "$tmp/no-tickets"
+check "find over an empty tickets dir prints nothing, exit 0" bash -c 'out="$(AGENT_HATS_TICKETS_DIR="$1" "$2" find)" && [ -z "$out" ]' _ "$tmp/no-tickets" "$hcbin"
+out="$(AGENT_HATS_TICKETS_DIR="$tmp/missing" "$hcbin" find 2>&1)"; rc=$?
+check "find over a missing tickets dir fails naming it" bash -c '[ "$1" -ne 0 ] && grep -qF "$3" <<<"$2"' _ "$rc" "$out" "$tmp/missing"
+out="$("$hcbin" view MT-1 2>&1)"; rc=$?
+check "the default tickets dir is ~/.agent-hats/tickets" bash -c '[ "$1" -ne 0 ] && grep -qF "$3" <<<"$2"' _ "$rc" "$out" "$HOME/.agent-hats/tickets"
+check "view shows every stage in order, versions ascending" test "$(hc view MT-2 --pager)" = "$(printf 'mt2 issue body\n\nmt2 impl one\n\nmt2 impl two\n\nmt2 test body')"
+check "view <stage> shows only that stage, v1 first" test "$(hc view MT-2 impl --pager)" = "$(printf 'mt2 impl one\n\nmt2 impl two')"
+check "view orders versions numerically" test "$(hc view MT-1 impl --pager)" = "$(printf 'mt1 impl two NEEDLE\n\nmt1 impl ten')"
+check "view resolves the key case-insensitively" test "$(hc view mt-1 plan --pager)" = "mt1 plan body"
+out="$(hc view MT-9 2>&1)"; rc=$?
+check "view of an unknown key fails naming the path" bash -c '[ "$1" -ne 0 ] && grep -qF "$3" <<<"$2"' _ "$rc" "$out" "$tk/MT-9"
+out="$(hc view MT-1 review 2>&1)"; rc=$?
+check "view of an empty stage fails naming the path" bash -c '[ "$1" -ne 0 ] && grep -qF "$3" <<<"$2"' _ "$rc" "$out" "$tk/MT-1/mt-1-review.md"
+check "hatcheck names no proprietary framework" bash -c '! grep -qwiE "mat|my-ai-team|shuke" "$1"' _ "$repo/bin/hatcheck"
+
+# A PATH with just the tools hatcheck needs: no pandoc, no fzf.
+minbin="$tmp/minbin"; mkdir -p "$minbin"
+for t in basename cat cksum cut date grep mkdir paste rm sort tee tr uname uniq; do
+  printf '#!%s\nexec %q "$@"\n' "$BASH" "$(command -v "$t")" > "$minbin/$t"; chmod +x "$minbin/$t"
+done
+out="$(AGENT_HATS_TICKETS_DIR="$tk" PATH="$minbin" "$BASH" "$repo/bin/hatcheck" view MT-2 impl 2>"$tmp/hc.err")"
+check "auto without pandoc falls back to the pager quietly" bash -c '[ "$1" = "$(printf "mt2 impl one\n\nmt2 impl two")" ] && [ ! -s "$2" ]' _ "$out" "$tmp/hc.err"
+
+# Interactive find, under a pseudo-terminal (util-linux script).
+if script -qec true /dev/null >/dev/null 2>&1; then
+  tty_find() { # <input> <PATH> <tickets dir> [find args]
+    local input="$1" p="$2" root="$3"; shift 3
+    printf '%s' "$input" | SHELL="$BASH" AGENT_HATS_TICKETS_DIR="$root" HATCHECK_VIEW=pager PATH="$p" \
+      "$(command -v script)" -qec "$(printf '%q ' "$BASH" "$repo/bin/hatcheck" find "$@")" /dev/null > "$tmp/tty.out"
+    rc="${PIPESTATUS[1]}"; out="$(tr -d '\r' < "$tmp/tty.out")"
+  }
+  tty_find "" "$minbin" "$tk" nothing-matches-this
+  check "tty find with no match says so, exit 1" bash -c '[ "$1" -eq 1 ] && grep -q "no matching tickets" <<<"$2"' _ "$rc" "$out"
+  tty_find "" "$minbin" "$tmp/no-tickets"
+  check "tty find over an empty dir says so, exit 1" bash -c '[ "$1" -eq 1 ] && grep -q "no matching tickets" <<<"$2"' _ "$rc" "$out"
+  tty_find $'2\n' "$minbin" "$tk"
+  check "numbered pick opens the chosen ticket" bash -c '[ "$1" -eq 0 ] && grep -q "^\[2\] MT-1" <<<"$2" && grep -q "mt1 plan body" <<<"$2" && ! grep -q "mt2 issue body" <<<"$2"' _ "$rc" "$out"
+  tty_find $'9\n' "$minbin" "$tk"
+  check "numbered pick out of range fails" bash -c '[ "$1" -ne 0 ] && grep -q "invalid selection" <<<"$2"' _ "$rc" "$out"
+  tty_find "" "$minbin" "$tk" needle
+  check "a single match opens without a list" bash -c '[ "$1" -eq 0 ] && grep -q "mt1 plan body" <<<"$2" && ! grep -q "^\[1\]" <<<"$2"' _ "$rc" "$out"
+  mkdir -p "$tmp/fzfstub"
+  printf '#!%s\ntee %q | grep "^MT-2"\n' "$BASH" "$tmp/fzf.in" > "$tmp/fzfstub/fzf"; chmod +x "$tmp/fzfstub/fzf"
+  tty_find "" "$tmp/fzfstub:$minbin" "$tk"
+  check "fzf pick opens the chosen ticket" bash -c '[ "$1" -eq 0 ] && grep -q "mt2 issue body" <<<"$2" && ! grep -q "mt1 plan body" <<<"$2" && [ "$(cut -f1 "$3" | tr "\n" " ")" = "MT-2 MT-1 " ]' _ "$rc" "$out" "$tmp/fzf.in"
+else
+  echo "skip tty find tests (no util-linux script)"
+fi
+
+# Web view on Git Bash: stub uname, cygpath, cmd and pandoc.
+gb="$tmp/gitbash"; mkdir -p "$gb"
+printf '#!%s\necho MINGW64_NT-10.0-19045\n' "$BASH" > "$gb/uname"
+printf '#!%s\ncase "$1" in -w) echo "W:$2" ;; -m) echo "C:$2" ;; esac\n' "$BASH" > "$gb/cygpath"
+printf '#!%s\nprintf "%%s\\n" "$@" > %q\n' "$BASH" "$tmp/cmd.log" > "$gb/cmd"
+cat > "$gb/pandoc" <<STUB
+#!$BASH
+echo run >> "$tmp/pandoc.log"
+while [ \$# -gt 0 ]; do case "\$1" in -H) head="\$2"; shift ;; -o) o="\$2"; shift ;; esac; shift; done
+{ cat "\$head"; cat; } > "\$o"
+STUB
+chmod +x "$gb"/*
+gbrun() { AGENT_HATS_TICKETS_DIR="$tk" PATH="$gb:$PATH" "$hcbin" view MT-2 --web; }
+gbrun
+html="$(ls "$HOME"/.cache/agent-hats/*/MT-2.html 2>/dev/null)"
+check "git bash opens the html through cmd start" test "$(tr '\n' ' ' < "$tmp/cmd.log")" = "//c start  W:$html "
+check "git bash html links artifacts from the ticket dir" grep -qF "<base href=\"file:///C:$tk/MT-2/\">" "$html"
+check "web view renders all stages" bash -c 'grep -q "mt2 issue body" "$1" && grep -q "mt2 test body" "$1"' _ "$html"
+gbrun
+check "web view reuses a fresh cache" test "$(wc -l < "$tmp/pandoc.log")" -eq 1
+touch "$tk/MT-2/mt-2-test.md"
+gbrun
+check "web view re-renders when a source is newer" test "$(wc -l < "$tmp/pandoc.log")" -eq 2
+
+# A failing opener falls back to the pager: quietly on auto, with a warning on --web.
+xo="$tmp/xdgfail"; mkdir -p "$xo"
+cp "$gb/pandoc" "$xo/pandoc"
+printf '#!%s\nexit 17\n' "$BASH" > "$xo/xdg-open"; chmod +x "$xo/xdg-open"
+xorun() { AGENT_HATS_TICKETS_DIR="$tk" DISPLAY=:0 PATH="$xo:$PATH" "$hcbin" view MT-2 impl "$@" 2>"$tmp/hc.err"; }
+out="$(xorun --web)"; rc=$?
+check "--web with a failing opener warns and pages" bash -c '[ "$1" -eq 0 ] && [ "$2" = "$(printf "mt2 impl one\n\nmt2 impl two")" ] && grep -q "xdg-open failed" "$3"' _ "$rc" "$out" "$tmp/hc.err"
+out="$(xorun)"; rc=$?
+check "auto with a failing opener pages quietly" bash -c '[ "$1" -eq 0 ] && [ "$2" = "$(printf "mt2 impl one\n\nmt2 impl two")" ] && [ ! -s "$3" ]' _ "$rc" "$out" "$tmp/hc.err"
 
 echo
 [ "$fails" -eq 0 ] && echo "all tests passed" || { echo "$fails test(s) failed"; exit 1; }

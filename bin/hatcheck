@@ -1,0 +1,228 @@
+#!/usr/bin/env bash
+# hatcheck find [query] [--web|--pager]
+# hatcheck view <KEY> [stage] [--web|--pager]
+# Browse the ticket evidence folders the hats write under
+# ${AGENT_HATS_TICKETS_DIR:-~/.agent-hats/tickets}/<KEY>/. Each holds write-once
+# stage files <key>-<stage>.md, <key>-<stage>-v2.md, ... (<key> lower-cased).
+# Status is never stored: the stages present are the status.
+#
+# View selection: --web / --pager for one invocation, else HATCHECK_VIEW
+# (auto|web|pager), else auto. auto renders with pandoc and opens the HTML when
+# pandoc and an opener are available, else pipes the Markdown to ${PAGER:-less}.
+set -euo pipefail
+
+die() { printf 'hatcheck: %s\n' "$*" >&2; exit 1; }
+
+stages=(issue plan impl review test)
+root="${AGENT_HATS_TICKETS_DIR:-$HOME/.agent-hats/tickets}"
+self="${BASH_SOURCE[0]}"
+
+usage="usage: hatcheck find [query] [--web|--pager]
+       hatcheck view <KEY> [stage] [--web|--pager]
+stages: ${stages[*]}
+tickets: $root"
+
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+need_root() { [ -d "$root" ] || die "no tickets dir: $root"; }
+
+# Stage files of ticket dir $1, or only of stage $2, as `stage<TAB>path` lines in
+# stage order, versions ascending (the unsuffixed file is v1).
+stage_files() {
+  local dir="$1" only="${2:-}" key stage f v
+  key="$(lower "$(basename "$dir")")"
+  for stage in "${stages[@]}"; do
+    [ -n "$only" ] && [ "$stage" != "$only" ] && continue
+    for f in "$dir/$key-$stage.md" "$dir/$key-$stage"-v*.md; do
+      [ -f "$f" ] || continue
+      v=1
+      if [[ "$f" == *-v*.md ]]; then
+        v="${f##*-v}"; v="${v%.md}"
+        [[ "$v" =~ ^[0-9]+$ ]] || continue
+      fi
+      printf '%s\t%s\t%s\n' "$v" "$stage" "$f"
+    done | sort -n -k1,1 | cut -f2-
+  done
+}
+
+# The ticket dir whose name matches $1 case-insensitively.
+resolve_key() {
+  local want dir
+  want="$(lower "$1")"
+  for dir in "$root"/*/; do
+    dir="${dir%/}"
+    if [ -d "$dir" ] && [ "$(lower "$(basename "$dir")")" = "$want" ]; then printf '%s\n' "$dir"; return 0; fi
+  done
+  return 1
+}
+
+# One `key<TAB>stages<TAB>date` line per ticket with stage files, newest first;
+# with a query, only tickets with a stage file containing it (case-insensitive).
+list_tickets() {
+  local query="$1" dir files f stage newest hit
+  for dir in "$root"/*/; do
+    dir="${dir%/}"
+    [ -d "$dir" ] || continue
+    files="$(stage_files "$dir")"
+    [ -n "$files" ] || continue
+    if [ -n "$query" ]; then
+      hit=""
+      while IFS=$'\t' read -r stage f; do
+        grep -qiF -- "$query" "$f" && { hit=1; break; }
+      done <<<"$files"
+      [ -n "$hit" ] || continue
+    fi
+    newest=""
+    while IFS=$'\t' read -r stage f; do
+      if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then newest="$f"; fi
+    done <<<"$files"
+    printf '%s\t%s\t%s\t%s\n' "$(date -r "$newest" +%s)" "$(basename "$dir")" \
+      "$(cut -f1 <<<"$files" | uniq | paste -sd' ' -)" "$(date -r "$newest" +%Y-%m-%d)"
+  done | sort -t $'\t' -k1,1nr -k2,2 | cut -f2-
+}
+
+pager() {
+  local p="${PAGER:-less}"
+  command -v -- "${p%% *}" >/dev/null 2>&1 || p="cat"
+  # shellcheck disable=SC2086  # PAGER may carry flags
+  $p
+}
+
+# Print the opener for this platform, or nothing when there is none.
+opener() {
+  case "$(uname -s)" in
+    Darwin) command -v open >/dev/null 2>&1 && echo open ;;
+    MINGW*|MSYS*|CYGWIN*) command -v cmd >/dev/null 2>&1 && command -v cygpath >/dev/null 2>&1 && echo cmd ;;
+    *) command -v xdg-open >/dev/null 2>&1 && [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] && echo xdg-open ;;
+  esac
+  return 0
+}
+
+# Render the files to cached HTML and open it; returns 1 when pandoc fails and
+# 2 when the opener does. The cache lives in a folder per ticket dir and is
+# reused until a source file is newer. A <base> pointing at the ticket dir makes
+# relative artifacts/ links resolve.
+render_web() {
+  local how="$1" dir="$2" name="$3" f cache html base fresh=1
+  shift 3
+  cache="${XDG_CACHE_HOME:-$HOME/.cache}/agent-hats/$(printf '%s' "$dir" | cksum | cut -d' ' -f1)"
+  html="$cache/$name.html"
+  mkdir -p "$cache"
+  [ -f "$html" ] || fresh=""
+  for f in "$@"; do if [ "$f" -nt "$html" ]; then fresh=""; fi; done
+  if [ -z "$fresh" ]; then
+    base="$dir"
+    [ "$how" = cmd ] && base="/$(cygpath -m "$dir")"
+    printf '<base href="file://%s/">\n' "${base// /%20}" > "$cache/$name.head.html"
+    concat "$@" | pandoc -f gfm -s --metadata title="$name" -H "$cache/$name.head.html" -o "$html" \
+      || { rm -f "$html"; return 1; }
+  fi
+  case "$how" in
+    open) open "$html" ;;
+    cmd) cmd //c start "" "$(cygpath -w "$html")" ;;
+    xdg-open) xdg-open "$html" >/dev/null 2>&1 ;;
+  esac || return 2
+}
+
+concat() {
+  local f first=1
+  for f in "$@"; do
+    [ -n "$first" ] || echo
+    first=""
+    cat "$f"
+  done
+}
+
+# Open the files as one document. $1 is the view request: web, pager or auto.
+show() {
+  local request="$1" dir="$2" name="$3" how="" why="" rc
+  shift 3
+  if [ "$request" != pager ]; then
+    if ! command -v pandoc >/dev/null 2>&1; then why="pandoc not found"
+    else how="$(opener)"; [ -n "$how" ] || why="no opener for $(uname -s)"
+    fi
+    if [ -n "$how" ]; then
+      rc=0; render_web "$how" "$dir" "$name" "$@" || rc=$?
+      [ "$rc" -ne 0 ] || return 0
+      if [ "$rc" -eq 2 ]; then why="$how failed"; else why="pandoc failed"; fi
+    fi
+    if [ "$request" = web ]; then printf 'hatcheck: web view unavailable (%s); using the pager\n' "$why" >&2; fi
+  fi
+  concat "$@" | pager
+}
+
+view_request() {
+  case "${1:-${HATCHECK_VIEW:-}}" in
+    web|pager) printf '%s\n' "${1:-$HATCHECK_VIEW}" ;;
+    *) echo auto ;;
+  esac
+}
+
+cmd_view() {
+  local flag="" key="" stage="" dir lkey files name
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --web) flag=web ;;
+      --pager) flag=pager ;;
+      -*) die "unknown option '$1'" ;;
+      *) if [ -z "$key" ]; then key="$1"; elif [ -z "$stage" ]; then stage="$1"; else die "$usage"; fi ;;
+    esac
+    shift
+  done
+  [ -n "$key" ] || die "$usage"
+  if [ -n "$stage" ] && [[ " ${stages[*]} " != *" $stage "* ]]; then
+    die "unknown stage '$stage'; stages: ${stages[*]}"
+  fi
+  need_root
+  dir="$(resolve_key "$key")" || die "no such ticket: $root/$key"
+  lkey="$(lower "$(basename "$dir")")"
+  files="$(stage_files "$dir" "$stage" | cut -f2-)"
+  [ -n "$files" ] || die "no stage files: $dir/$lkey-${stage:-<stage>}.md"
+  name="$(basename "$dir")${stage:+-$stage}"
+  local -a paths=()
+  while IFS= read -r f; do paths+=("$f"); done <<<"$files"
+  show "$(view_request "$flag")" "$dir" "$name" "${paths[@]}"
+}
+
+cmd_find() {
+  local flag="" lines pick n i choice
+  local -a words=() rows=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --web) flag=web ;;
+      --pager) flag=pager ;;
+      *) words+=("$1") ;;
+    esac
+    shift
+  done
+  need_root
+  lines="$(list_tickets "${words[*]:-}")"
+  if [ ! -t 1 ]; then
+    [ -z "$lines" ] || printf '%s\n' "$lines"
+    return 0
+  fi
+  [ -n "$lines" ] || die "no matching tickets"
+  if command -v fzf >/dev/null 2>&1; then
+    pick="$(printf '%s\n' "$lines" | fzf --delimiter '\t' --prompt 'ticket> ' \
+      --preview "PAGER=cat bash $(printf '%q' "$self") view {1} --pager")" || return 0
+  else
+    while IFS= read -r i; do rows+=("$i"); done <<<"$lines"
+    n="${#rows[@]}"
+    if [ "$n" -eq 1 ]; then
+      pick="${rows[0]}"
+    else
+      for i in "${!rows[@]}"; do printf '[%d] %s\n' "$((i + 1))" "${rows[$i]//$'\t'/  }"; done
+      read -r -p "select ticket number: " choice || die "invalid selection"
+      [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$n" ] || die "invalid selection"
+      pick="${rows[$((choice - 1))]}"
+    fi
+  fi
+  cmd_view "${pick%%$'\t'*}" ${flag:+"--$flag"}
+}
+
+case "${1:-}" in
+  find) shift; cmd_find "$@" ;;
+  view) shift; cmd_view "$@" ;;
+  -h|--help|help) printf '%s\n' "$usage" ;;
+  *) die "$usage" ;;
+esac

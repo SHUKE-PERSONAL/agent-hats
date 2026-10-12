@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
-# Install the hat command into ~/.local/bin, and the constitutions and an
-# example backends.json into ~/.agent-hats. The command is a generated wrapper
-# over bin/hat; re-running overwrites it in place. A constitution or the backend
-# table is copied only when missing; an existing one is the user's and is never
-# overwritten.
+# Install the hat and hatcheck commands into ~/.local/bin, and the constitutions
+# and an example backends.json into ~/.agent-hats. Each command is a generated
+# wrapper over bin/<command>; re-running overwrites it in place. A constitution
+# or the backend table is copied only when missing; an existing one is the
+# user's and is never overwritten.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bindir="$HOME/.local/bin"
 mkdir -p "$bindir"
 
-target="$bindir/hat"
-rm -f "$target"
-printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$repo/bin/hat" > "$target"
-chmod +x "$target"
-echo "installed $target"
+for cmd in hat hatcheck; do
+  target="$bindir/$cmd"
+  rm -f "$target"
+  printf '#!/usr/bin/env bash\nexec %q "$@"\n' "$repo/bin/$cmd" > "$target"
+  chmod +x "$target"
+  echo "installed $target"
+done
 
 condir="$HOME/.agent-hats"
 mkdir -p "$condir"
