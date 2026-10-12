@@ -29,6 +29,9 @@ chmod +x "$tmp/stub/claude"
 base_path="/usr/bin:/bin"
 export PATH="$tmp/stub:$base_path"
 unset ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_BASE_URL MY_TOK MY_URL MY_GH_TOK
+# Host gh credentials would let the real gh answer `gh auth token`.
+unset GH_TOKEN GITHUB_TOKEN COPILOT_GITHUB_TOKEN
+export GH_CONFIG_DIR="$tmp/gh-config"
 export CLAUDE_CODE_OAUTH_TOKEN=sk-test
 unset HAT_KIND HAT_BACKEND HAT_MODEL HAT_EFFORT
 
