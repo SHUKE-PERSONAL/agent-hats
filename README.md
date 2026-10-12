@@ -33,10 +33,10 @@ hat adhoc -- "bump the version"   # with an initial prompt
 ./install.sh
 ```
 
-This writes the `hat` command into `~/.local/bin` (which must be on `PATH`). It is a two-line
-wrapper that execs `bin/hat` from this checkout by absolute path — a generated file, not a
-symlink. Re-running `install.sh` is safe and overwrites it in place; re-run it after moving the
-checkout.
+This writes the `hat` and [`hatcheck`](#hatcheck) commands into `~/.local/bin` (which must be on
+`PATH`). Each is a two-line wrapper that execs `bin/<command>` from this checkout by absolute
+path — a generated file, not a symlink. Re-running `install.sh` is safe and overwrites them in
+place; re-run it after moving the checkout.
 
 It also installs the four constitutions from `constitutions/` into `~/.agent-hats/`:
 
@@ -56,7 +56,8 @@ would shadow mat's. Edit the table to match your models.
 
 Requires `bash` (Windows Git Bash works) and, depending on the kind, Claude Code (`claude`) or
 GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Claude first run](#claude-first-run),
-[Folder trust](#folder-trust) and [Model and effort](#model-and-effort)).
+[Folder trust](#folder-trust) and [Model and effort](#model-and-effort)); `fzf` and `pandoc` are
+optional for [`hatcheck`](#hatcheck).
 
 ## Usage
 
@@ -290,6 +291,33 @@ The shipped hats keep their written record outside the repo, one folder per tick
 Files are write-once; a redone stage is `-v2`, `-v3`, …. `explore` ends by printing the
 ticket's absolute path — paste it into a `hat adhoc` session to deliver it.
 
+It is an evidence folder, not an issue tracker: the JIRA key is the ID, and nothing stores a
+status — the stages present are the status. Set `AGENT_HATS_TICKETS_DIR` to keep the folders
+somewhere other than `~/.agent-hats/tickets`.
+
+### hatcheck
+
+`hatcheck` browses the ticket folders — you leave your hat, you get a ticket.
+
+```sh
+hatcheck find [query]                       # pick a ticket and open it
+hatcheck find | cat                         # key, stages, date per ticket, tab-separated
+hatcheck view ABC-1234 [stage] [--web|--pager]
+```
+
+- `find` lists tickets newest first, with the stages present (`issue plan impl review test`)
+  and the date of the newest stage file. A query keeps only tickets whose stage files contain
+  it, case-insensitively. On a terminal it lets you pick one — with `fzf` when installed, else
+  from a numbered list — and opens it; piped, it prints the list.
+- `view` shows every stage file as one document, in stage order and versions ascending, or only
+  the named stage. The key is case-insensitive.
+- `--web` renders the document with `pandoc` and opens it in the browser (`xdg-open`, `open`, or
+  `start` on Git Bash); `artifacts/` links work from the page. The HTML is cached under
+  `~/.cache/agent-hats/` until a stage file changes. `--pager` pipes the Markdown to
+  `${PAGER:-less}`. Without either flag, `HATCHECK_VIEW` (`auto`, `web` or `pager`) decides;
+  `auto`, the default, uses the web view when `pandoc` and a browser opener are available and
+  the pager otherwise.
+
 ### Your own hats
 
 Write `~/.agent-hats/<mode>.md` and run `hat <mode>`; nothing else to register. For example,
@@ -309,5 +337,5 @@ bash test/run.sh
 
 [MIT](LICENSE)
 
-`constitutions/audit.md`, `skills/ticket-self-critique` and `bin/hat-statusline` are adapted from the
+`constitutions/audit.md`, `skills/ticket-self-critique`, `bin/hat-statusline` and `bin/hatcheck` are adapted from the
 my-ai-team framework and released here under the same MIT license by their copyright holder.
