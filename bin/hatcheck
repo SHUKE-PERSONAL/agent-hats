@@ -98,9 +98,10 @@ opener() {
   return 0
 }
 
-# Render the files to cached HTML and open it. The cache lives in a folder per
-# ticket dir and is reused until a source file is newer. A <base> pointing at the
-# ticket dir makes relative artifacts/ links resolve.
+# Render the files to cached HTML and open it; returns 1 when pandoc fails and
+# 2 when the opener does. The cache lives in a folder per ticket dir and is
+# reused until a source file is newer. A <base> pointing at the ticket dir makes
+# relative artifacts/ links resolve.
 render_web() {
   local how="$1" dir="$2" name="$3" f cache html base fresh=1
   shift 3
@@ -119,8 +120,8 @@ render_web() {
   case "$how" in
     open) open "$html" ;;
     cmd) cmd //c start "" "$(cygpath -w "$html")" ;;
-    xdg-open) xdg-open "$html" >/dev/null 2>&1 || true ;;
-  esac
+    xdg-open) xdg-open "$html" >/dev/null 2>&1 ;;
+  esac || return 2
 }
 
 concat() {
@@ -134,15 +135,16 @@ concat() {
 
 # Open the files as one document. $1 is the view request: web, pager or auto.
 show() {
-  local request="$1" dir="$2" name="$3" how="" why=""
+  local request="$1" dir="$2" name="$3" how="" why="" rc
   shift 3
   if [ "$request" != pager ]; then
     if ! command -v pandoc >/dev/null 2>&1; then why="pandoc not found"
     else how="$(opener)"; [ -n "$how" ] || why="no opener for $(uname -s)"
     fi
     if [ -n "$how" ]; then
-      render_web "$how" "$dir" "$name" "$@" && return 0
-      why="pandoc failed"
+      rc=0; render_web "$how" "$dir" "$name" "$@" || rc=$?
+      [ "$rc" -ne 0 ] || return 0
+      if [ "$rc" -eq 2 ]; then why="$how failed"; else why="pandoc failed"; fi
     fi
     if [ "$request" = web ]; then printf 'hatcheck: web view unavailable (%s); using the pager\n' "$why" >&2; fi
   fi
