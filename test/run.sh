@@ -679,6 +679,5 @@ check "--web with a failing opener warns and pages" bash -c '[ "$1" -eq 0 ] && [
 out="$(xorun)"; rc=$?
 check "auto with a failing opener pages quietly" bash -c '[ "$1" -eq 0 ] && [ "$2" = "$(printf "mt2 impl one\n\nmt2 impl two")" ] && [ ! -s "$3" ]' _ "$rc" "$out" "$tmp/hc.err"
 
-check "ci gate proof (deliberately broken)" false
 echo
 [ "$fails" -eq 0 ] && echo "all tests passed" || { echo "$fails test(s) failed"; exit 1; }
