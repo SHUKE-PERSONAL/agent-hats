@@ -1,0 +1,23 @@
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # The suite skips its tty tests without util-linux script; make sure nothing is skipped.
+      - name: Provision jq and script
+        run: |
+          if ! command -v jq >/dev/null || ! script -qec true /dev/null >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq bsdutils
+          fi
+          command -v jq
+          script -qec true /dev/null
+      - name: Run tests
+        run: bash test/run.sh

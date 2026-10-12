@@ -333,6 +333,8 @@ files and never touches yours.
 bash test/run.sh
 ```
 
+CI runs the same command on every pull request and push to `main`.
+
 ## License
 
 [MIT](LICENSE)
