@@ -47,49 +47,47 @@ case "$kind" in
   ''|claude|copilot) ;;
   *) die "unknown kind '$kind'; accepted values: claude, copilot" ;;
 esac
+command -v jq >/dev/null 2>&1 \
+  || die "jq not found on PATH; hat needs it to resolve backends and seed config homes (install jq, e.g. 'apt install jq', 'brew install jq' or 'winget install jqlang.jq')"
 
 # A backend nickname is looked up in agent-hats' own table, then mat's;
 # only nickname, kind, default_model, default_effort, auth_var, base_url_var
 # and context_window_size are read.
-# Both files are optional and read-only: without jq, or with no readable
-# table, the built-in defaults apply. A nickname missing from every readable
+# Both files are optional and read-only: with no readable table, the
+# built-in defaults apply. A nickname missing from every readable
 # table is an error.
 auth_var="" base_url_var="" context_window_size=""
 if [ -n "$backend" ]; then
   tables=0 entry=""
-  if ! command -v jq >/dev/null 2>&1; then
-    warn "jq not found; backend '$backend' not resolved, using built-in defaults"
-  else
-    for table in "$HOME/.agent-hats/backends.json" "$HOME/.config/mat/backends.json"; do
-      [ -e "$table" ] || continue
-      if ! jq -e '.backends | type == "array"' "$table" >/dev/null 2>&1; then
-        warn "ignoring unreadable or malformed $table"
-        continue
-      fi
-      tables=$((tables + 1))
-      # tr: native jq on Windows emits CRLF.
-      entry="$(jq -r --arg n "$backend" 'first(.backends[] | objects | select(.nickname == $n))
-        | (.kind // ""), (.default_model // ""), (.default_effort // ""), (.auth_var // ""), (.base_url_var // ""), (.context_window_size // "" | tostring)' "$table" 2>/dev/null | tr -d '\r')" || entry=""
-      [ -n "$entry" ] && break
-    done
-    if [ -n "$entry" ]; then
-      { read -r entry_kind; read -r entry_model; read -r entry_effort; read -r auth_var; read -r base_url_var; read -r context_window_size; } <<<"$entry" || true  # $(...) drops trailing empty fields
-      if [ -n "$entry_kind" ]; then
-        case "$entry_kind" in
-          claude|copilot) ;;
-          *) die "backend '$backend' has kind '$entry_kind'; accepted values: claude, copilot" ;;
-        esac
-        [ -z "$kind" ] || [ "$kind" = "$entry_kind" ] \
-          || die "backend '$backend' has kind '$entry_kind', but kind '$kind' was requested"
-        kind="$entry_kind"
-      fi
-      [ -n "$model" ]  || model="$entry_model"
-      [ -n "$effort" ] || effort="$entry_effort"
-    elif [ "$tables" -gt 0 ]; then
-      die "unknown backend '$backend': not found in ~/.agent-hats/backends.json or ~/.config/mat/backends.json"
-    else
-      warn "no readable backends.json; backend '$backend' not resolved, using built-in defaults"
+  for table in "$HOME/.agent-hats/backends.json" "$HOME/.config/mat/backends.json"; do
+    [ -e "$table" ] || continue
+    if ! jq -e '.backends | type == "array"' "$table" >/dev/null 2>&1; then
+      warn "ignoring unreadable or malformed $table"
+      continue
     fi
+    tables=$((tables + 1))
+    # tr: native jq on Windows emits CRLF.
+    entry="$(jq -r --arg n "$backend" 'first(.backends[] | objects | select(.nickname == $n))
+      | (.kind // ""), (.default_model // ""), (.default_effort // ""), (.auth_var // ""), (.base_url_var // ""), (.context_window_size // "" | tostring)' "$table" 2>/dev/null | tr -d '\r')" || entry=""
+    [ -n "$entry" ] && break
+  done
+  if [ -n "$entry" ]; then
+    { read -r entry_kind; read -r entry_model; read -r entry_effort; read -r auth_var; read -r base_url_var; read -r context_window_size; } <<<"$entry" || true  # $(...) drops trailing empty fields
+    if [ -n "$entry_kind" ]; then
+      case "$entry_kind" in
+        claude|copilot) ;;
+        *) die "backend '$backend' has kind '$entry_kind'; accepted values: claude, copilot" ;;
+      esac
+      [ -z "$kind" ] || [ "$kind" = "$entry_kind" ] \
+        || die "backend '$backend' has kind '$entry_kind', but kind '$kind' was requested"
+      kind="$entry_kind"
+    fi
+    [ -n "$model" ]  || model="$entry_model"
+    [ -n "$effort" ] || effort="$entry_effort"
+  elif [ "$tables" -gt 0 ]; then
+    die "unknown backend '$backend': not found in ~/.agent-hats/backends.json or ~/.config/mat/backends.json"
+  else
+    warn "no readable backends.json; backend '$backend' not resolved, using built-in defaults"
   fi
 fi
 kind="${kind:-claude}"
@@ -142,10 +140,6 @@ copilot_trust_cwd() {
   local cfg="$home/config.json" dir header body
   dir="$PWD"
   command -v cygpath >/dev/null 2>&1 && dir="$(cygpath -w "$dir")"
-  if ! command -v jq >/dev/null 2>&1; then
-    printf 'hat: jq not found; folder trust not pre-seeded, Copilot will ask once to trust %s\n' "$dir" >&2
-    return 0
-  fi
   header="" body="{}"
   if [ -s "$cfg" ]; then
     header="$(awk '/^[[:space:]]*\/\//{print; next} {exit}' "$cfg")"
@@ -171,25 +165,27 @@ seed_json() {
 }
 
 # A fresh Claude home stops on onboarding (theme and login), the folder-trust
-# dialog and the bypass-permissions warning. Pre-answer all three, and point
-# the status line at bin/hat-statusline unless the home has its own. Claude
+# dialog and the bypass-permissions warning. Pre-answer all three, apply the
+# agentic defaults (no away recap, tips, animations, footers, rewind or
+# prompt suggestions; auto-compact on; no background tasks), and point the
+# status line at bin/hat-statusline unless the home has its own. Claude
 # keys folder trust by the git common root (the main checkout, also for a
 # worktree), else the cwd, in Windows mixed form (C:/...).
 claude_seed_home() {
   local dir="$PWD" common
   common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" && dir="$(dirname "$common")"
   command -v cygpath >/dev/null 2>&1 && dir="$(cygpath -m "$dir")"
-  if ! command -v jq >/dev/null 2>&1; then
-    warn "jq not found; folder trust not pre-seeded, Claude will ask once to trust $dir"
-    [ -e "$home/.claude.json" ] || printf '{"hasCompletedOnboarding": true}\n' > "$home/.claude.json"
-    [ -e "$home/settings.json" ] || printf '{"skipDangerousModePermissionPrompt": true}\n' > "$home/settings.json"
-    return 0
-  fi
   seed_json "$home/.claude.json" '.hasCompletedOnboarding = true
     | .projects[$d] = ({allowedTools: []} + (.projects[$d] // {}) + {hasTrustDialogAccepted: true})' --arg d "$dir"
   local statusline="$here/hat-statusline"
   command -v cygpath >/dev/null 2>&1 && statusline="$(cygpath -m "$statusline")"
-  seed_json "$home/settings.json" '.skipDangerousModePermissionPrompt = true
+  seed_json "$home/settings.json" '. + {skipDangerousModePermissionPrompt: true,
+      autoCompactEnabled: true, awaySummaryEnabled: false, spinnerTipsEnabled: false,
+      prefersReducedMotion: true, terminalProgressBarEnabled: false,
+      showTurnDurationEnabled: false, showPRStatusFooter: false,
+      enableChromeIntegration: false, rewindEnabled: false}
+    | .env = ((.env // {}) + {CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION: "false",
+      CLAUDE_CODE_DISABLE_BACKGROUND_TASKS: "1"})
     | if (.statusLine == null) or ((.statusLine.command // "") | test("hat-statusline"))
       then .statusLine = {type: "command", command: ("bash \"" + $s + "\"")} else . end' --arg s "$statusline"
 }

@@ -134,6 +134,12 @@ check "onboarding marked complete" jqf "$cfg/.claude.json" '.hasCompletedOnboard
 check "non-git cwd trusted" jqf "$cfg/.claude.json" '.projects[$d] == {allowedTools: [], hasTrustDialogAccepted: true}' --arg d "$(mixed "$plain")"
 check "bypass-permissions prompt skipped" jqf "$cfg/settings.json" '.skipDangerousModePermissionPrompt == true'
 check "status line points at hat-statusline" jqf "$cfg/settings.json" '.statusLine == {type: "command", command: ("bash \"" + $s + "\"")}' --arg s "$(mixed "$repo/bin/hat-statusline")"
+agentic='.autoCompactEnabled == true and .awaySummaryEnabled == false and .spinnerTipsEnabled == false
+  and .prefersReducedMotion == true and .terminalProgressBarEnabled == false
+  and .showTurnDurationEnabled == false and .showPRStatusFooter == false
+  and .enableChromeIntegration == false and .rewindEnabled == false
+  and .env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION == "false" and .env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS == "1"'
+check "agentic defaults seeded" jqf "$cfg/settings.json" "$agentic"
 
 repo_main="$tmp/repo-main"
 git init -q "$repo_main" && git -C "$repo_main" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init \
@@ -143,10 +149,11 @@ check "worktree subdir trusts the git common root" jqf "$cfg/.claude.json" '.pro
 check "worktree path itself is not keyed" jqf "$cfg/.claude.json" '.projects | has($d) | not' --arg d "$(mixed "$tmp/repo-wt")"
 
 jq '.numStartups = 7 | .projects[$d].allowedTools = ["Bash"]' --arg d "$(mixed "$plain")" "$cfg/.claude.json" > "$tmp/s.json" && mv "$tmp/s.json" "$cfg/.claude.json"
-printf '{"theme": "light"}\n' > "$cfg/settings.json"
+printf '{"theme": "light", "awaySummaryEnabled": true, "env": {"FOO": "bar", "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "0"}}\n' > "$cfg/settings.json"
 (cd "$plain" && "$HOME/.local/bin/hat" explore)
 check "existing state keys kept" jqf "$cfg/.claude.json" '.numStartups == 7 and .projects[$d] == {allowedTools: ["Bash"], hasTrustDialogAccepted: true}' --arg d "$(mixed "$plain")"
-check "existing settings kept" jqf "$cfg/settings.json" '.theme == "light" and .skipDangerousModePermissionPrompt == true'
+check "existing settings kept" jqf "$cfg/settings.json" '.theme == "light" and .env.FOO == "bar" and .skipDangerousModePermissionPrompt == true and .statusLine.type == "command"'
+check "agentic defaults override existing values" jqf "$cfg/settings.json" "$agentic"
 before="$(cksum "$cfg/.claude.json" "$cfg/settings.json")"
 (cd "$plain" && "$HOME/.local/bin/hat" explore)
 check "seeded files are not rewritten" test "$(cksum "$cfg/.claude.json" "$cfg/settings.json")" = "$before"
@@ -412,15 +419,14 @@ cp -p "$tmp/mat-backends.json" "$matcfg/backends.json"
 # jq absent: PATH holds only the stubs and wrappers for the tools the launcher needs
 nojq="$tmp/nojq"; mkdir -p "$nojq"
 for t in bash cp mkdir; do printf '#!/bin/sh\nexec /usr/bin/%s "$@"\n' "$t" > "$nojq/$t"; chmod +x "$nojq/$t"; done
-rm -f "$HOME/claude.log"
-out="$(PATH="$tmp/stub:$nojq" "$HOME/.local/bin/hat" explore --backend sonnet 2>&1)"; rc=$?
-check "no jq: launch still succeeds" test "$rc" -eq 0
-check "no jq: warning names jq" grep -qF "jq not found" <<<"$out"
-check "no jq: built-in defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=high "
-nojq_home="$HOME/.agent-hats/homes/live-claude"; rm -rf "$nojq_home"
-out="$(cd "$work" && PATH="$tmp/stub:$nojq" "$HOME/.local/bin/hat" live 2>&1)"; rc=$?
-check "no jq: fresh home still seeded" bash -c '[ "$1" -eq 0 ] && jq -e ".hasCompletedOnboarding == true" "$2/.claude.json" >/dev/null && jq -e ".skipDangerousModePermissionPrompt == true" "$2/settings.json" >/dev/null' _ "$rc" "$nojq_home"
-check "no jq: trust warning" grep -qF "folder trust not pre-seeded" <<<"$out"
+for k in claude copilot; do
+  nojq_home="$HOME/.agent-hats/homes/live-$k"; rm -rf "$nojq_home" "$HOME/$k.log"
+  out="$(cd "$work" && PATH="$tmp/stub:$nojq" COPILOT_GITHUB_TOKEN=github_pat_x "$HOME/.local/bin/hat" live --kind "$k" 2>&1)"; rc=$?
+  check "no jq ($k): exits non-zero" test "$rc" -ne 0
+  check "no jq ($k): error names jq" grep -qF "jq not found" <<<"$out"
+  check "no jq ($k): $k not launched" test ! -e "$HOME/$k.log"
+  check "no jq ($k): home not created" test ! -e "$nojq_home"
+done
 
 check "no write under ~/.config/mat" test "$(ls -laR --time-style=full-iso "$matcfg"; cksum "$matcfg/backends.json")" = "$mat_before"
 

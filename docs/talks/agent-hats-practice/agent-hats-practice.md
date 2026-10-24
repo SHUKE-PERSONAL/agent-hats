@@ -226,7 +226,7 @@ cd agent-hats && ./install.sh
 export PATH="$HOME/.local/bin:$PATH"   # if needed
 ```
 
-Needs: `bash`, `claude` or `copilot` · optional `jq`
+Needs: `bash`, `jq`, `claude` or `copilot`
 
 <!--
 ~45s
