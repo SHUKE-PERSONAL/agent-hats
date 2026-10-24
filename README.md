@@ -94,8 +94,12 @@ Each launch:
 
    ```sh
    CLAUDE_CONFIG_DIR=<home> CLAUDE_CODE_AUTO_COMPACT_WINDOW=<window> ANTHROPIC_AUTH_TOKEN=<token> \
-     claude --model=<model> --effort <effort> --dangerously-skip-permissions [your args...]
+     claude --model=<model> --effort <effort> --dangerously-skip-permissions \
+       --disallowedTools=AskUserQuestion [your args...]
    ```
+
+   Claude's native `AskUserQuestion` tool is disabled by default; the agent can still ask
+   clarifying questions in plain text.
 
    and for `copilot`:
 

@@ -107,6 +107,7 @@ expected_args="ARG=--model=opus[1m]
 ARG=--effort
 ARG=high
 ARG=--dangerously-skip-permissions
+ARG=--disallowedTools=AskUserQuestion
 ARG=--foo
 ARG=two words"
 check "defaults then passthrough args" test "$(grep '^ARG=' "$HOME/claude.log")" = "$expected_args"
@@ -227,6 +228,7 @@ ARG=high
 ARG=--foo
 ARG=two words"
 check "copilot defaults then passthrough args" test "$(grep '^ARG=' "$HOME/copilot.log")" = "$expected_args"
+check "copilot gets no claude tool deny list" bash -c '! grep -q disallowedTools "$1"' _ "$HOME/copilot.log"
 (cd "$work" && "$HOME/.local/bin/hat" audit --kind copilot >/dev/null 2>&1)
 check "copilot audit starts with -i and its prompt" bash -c 'grep -A1 -x "ARG=-i" "$1" | grep -qx "ARG=Run one audit pass."' _ "$HOME/copilot.log"
 check "a copilot home links its session-state to the default home" test -L "$cop/session-state"
@@ -317,7 +319,7 @@ mat_before="$(ls -laR --time-style=full-iso "$matcfg"; cksum "$matcfg/backends.j
 launch
 check "table present, no nickname: defaults" test "$(args claude 3)" = "ARG=--model=opus[1m] ARG=--effort ARG=high "
 launch --backend sonnet --foo
-check "nickname resolves mat entry" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=--foo "
+check "nickname resolves mat entry" test "$(args claude 6)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=--disallowedTools=AskUserQuestion ARG=--foo "
 check "mat config_dir is not inherited" grep -qxF "CLAUDE_CONFIG_DIR=$cfg" "$HOME/claude.log"
 HAT_BACKEND=sonnet launch
 check "HAT_BACKEND selects the entry" test "$(args claude 3)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low "
@@ -361,13 +363,13 @@ check "explicit kind conflicting with entry exits non-zero" bash -c '[ "$1" -ne 
 launch --backend grok
 check "unsupported entry kind exits non-zero" bash -c '[ "$1" -ne 0 ] && grep -qF "accepted values: claude, copilot" <<<"$2"' _ "$rc" "$out"
 launch sonnet --foo
-check "bare word selects the backend" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=--foo "
+check "bare word selects the backend" test "$(args claude 6)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=--disallowedTools=AskUserQuestion ARG=--foo "
 launch sonnet --effort low "two words"
-check "options still read after the nickname" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=two words "
+check "options still read after the nickname" test "$(args claude 6)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=--disallowedTools=AskUserQuestion ARG=two words "
 launch --backend sonnet prompt
-check "bare word after --backend passes through" test "$(args claude 5)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=prompt "
+check "bare word after --backend passes through" test "$(args claude 6)" = "ARG=--model=sonnet[1m] ARG=--effort ARG=low ARG=--dangerously-skip-permissions ARG=--disallowedTools=AskUserQuestion ARG=prompt "
 launch -- "fix it" --model x
-check "-- starts agent args and is dropped" test "$(grep '^ARG=' "$HOME/claude.log" | tr '\n' ' ')" = "ARG=--model=opus[1m] ARG=--effort ARG=high ARG=--dangerously-skip-permissions ARG=fix it ARG=--model ARG=x "
+check "-- starts agent args and is dropped" test "$(grep '^ARG=' "$HOME/claude.log" | tr '\n' ' ')" = "ARG=--model=opus[1m] ARG=--effort ARG=high ARG=--dangerously-skip-permissions ARG=--disallowedTools=AskUserQuestion ARG=fix it ARG=--model ARG=x "
 HAT_BACKEND=cop launch sonnet
 check "bare word wins over HAT_BACKEND" grep -qx "ARG=--model=sonnet\[1m\]" "$HOME/claude.log"
 launch nosuch
@@ -544,7 +546,8 @@ fi
 
 # --- audit start prompt ---
 (cd "$work" && "$HOME/.local/bin/hat" audit >/dev/null 2>&1)
-check "bare audit starts with its standing prompt" test "$(grep '^ARG=' "$HOME/claude.log" | tail -n1)" = "ARG=Run one audit pass."
+check "bare audit starts with its standing prompt after the deny flag" test "$(grep '^ARG=' "$HOME/claude.log" | tail -n2)" = "ARG=--disallowedTools=AskUserQuestion
+ARG=Run one audit pass."
 (cd "$work" && "$HOME/.local/bin/hat" audit -- "audit PR #7" >/dev/null 2>&1)
 check "audit with a prompt keeps the operator's" bash -c '[ "$(grep "^ARG=" "$1" | tail -n1)" = "ARG=audit PR #7" ] && ! grep -q "Run one audit pass" "$1"' _ "$HOME/claude.log"
 (cd "$work" && "$HOME/.local/bin/hat" live >/dev/null 2>&1)
