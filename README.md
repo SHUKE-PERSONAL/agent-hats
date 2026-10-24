@@ -55,9 +55,8 @@ reported `unchanged` or `kept` — with one exception: when it is missing and ma
 would shadow mat's. Edit the table to match your models.
 
 Requires `bash` (Windows Git Bash works) and, depending on the kind, Claude Code (`claude`) or
-GitHub Copilot CLI (`copilot`) on `PATH`. `jq` is optional (see [Claude first run](#claude-first-run),
-[Folder trust](#folder-trust) and [Model and effort](#model-and-effort)); `fzf` and `pandoc` are
-optional for [`hatcheck`](#hatcheck).
+GitHub Copilot CLI (`copilot`) on `PATH`. `hat` also requires `jq`: without it, `hat` exits
+non-zero before launching anything. `fzf` and `pandoc` are optional for [`hatcheck`](#hatcheck).
 
 ## Usage
 
@@ -151,8 +150,7 @@ to the built-in default. The entry's `kind` selects the kind unless one is given
 explicit kind that differs, or an entry kind other than `claude`/`copilot`, exits non-zero.
 
 Without `--backend` no table is read. The tables are only ever read, never written, and a lookup
-is best-effort: without `jq`, or when no table exists, the launcher warns and uses the built-in
-defaults; an unreadable or malformed table is skipped with a warning. A nickname that no readable
+is best-effort: when no table exists, the launcher warns and uses the built-in defaults; an unreadable or malformed table is skipped with a warning. A nickname that no readable
 table contains exits non-zero naming it.
 
 ### Context window
@@ -185,16 +183,34 @@ once per home.
 
 A fresh Claude home would stop on onboarding, the folder-trust dialog and the bypass-permissions
 warning. Before launching, the launcher sets `hasCompletedOnboarding` and trusts the project in
-`<home>/.claude.json`, and sets `skipDangerousModePermissionPrompt` in `<home>/settings.json`. Other
-keys are kept, and a file is rewritten only when a value changes. The trusted key is the git common
-root (the main checkout, also when launched from a worktree), else the current directory. Without
-`jq`, a missing file is created with just the onboarding or bypass setting, an existing one is left
-alone, and Claude asks once per folder whether to trust it. A file that is not valid JSON stops the
-launch.
+`<home>/.claude.json`, and sets `skipDangerousModePermissionPrompt` in `<home>/settings.json`. The
+trusted key is the git common root (the main checkout, also when launched from a worktree), else the
+current directory.
+
+The same `settings.json` update also applies defaults suited to an unattended agent:
+
+| Setting | Value | Effect |
+|---|---|---|
+| `awaySummaryEnabled` | `false` | no recap of the session when you return to it |
+| `autoCompactEnabled` | `true` | compact automatically (see [Context window](#context-window)) |
+| `spinnerTipsEnabled` | `false` | no tips in the spinner |
+| `prefersReducedMotion` | `true` | fewer animations |
+| `terminalProgressBarEnabled` | `false` | no terminal progress bar |
+| `showTurnDurationEnabled` | `false` | no per-turn duration line |
+| `showPRStatusFooter` | `false` | no PR status footer |
+| `enableChromeIntegration` | `false` | no Chrome integration |
+| `rewindEnabled` | `false` | no rewind |
+| `env.CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION` | `"false"` | no suggested next prompt |
+| `env.CLAUDE_CODE_DISABLE_BACKGROUND_TASKS` | `"1"` | no background tasks |
+
+These values are re-applied on every launch, so change them in the launcher, not the home. Other
+keys, including other `env` entries, are kept, and a file is rewritten only when a value changes. A
+file that is not valid JSON stops the launch. The settings live only in the hat's home, never in
+`~/.claude/settings.json`.
 
 ### Status line
 
-With `jq`, the launcher also sets `statusLine` in `<home>/settings.json` to run `bin/hat-statusline`
+The launcher also sets `statusLine` in `<home>/settings.json` to run `bin/hat-statusline`
 from this checkout, unless the home already has a status line of its own (one pointing at an older
 `hat-statusline` path is repointed). It shows
 
@@ -259,8 +275,6 @@ before launching. With no token at all the launch exits non-zero naming `COPILOT
 Copilot asks whether to trust the working directory before it starts, and no launch flag
 (`--yolo` included) skips that prompt. Before launching, the launcher adds the current directory
 to `trustedFolders` in `<home>/config.json`, keeping the file's other keys and header comments.
-This needs `jq`. Without `jq` the launcher prints a warning and launches anyway, and Copilot asks
-once per folder; answer it and Copilot remembers the choice in the same home.
 
 ## Constitution contract
 
