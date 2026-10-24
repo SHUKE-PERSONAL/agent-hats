@@ -362,7 +362,10 @@ case "$kind" in
     CLAUDE_CODE_AUTO_COMPACT_WINDOW="$(compact_window)"
     export CLAUDE_CODE_AUTO_COMPACT_WINDOW
     if [ -n "$start_prompt" ]; then set -- "$start_prompt"; fi
-    exec claude "--model=$model" --effort "$effort" --dangerously-skip-permissions "$@"
+    # --disallowedTools takes a list: the space form would swallow a following
+    # prompt as a tool name, so pass its one value in the --flag=value form.
+    exec claude "--model=$model" --effort "$effort" --dangerously-skip-permissions \
+      --disallowedTools=AskUserQuestion "$@"
     ;;
   copilot)
     token="$(copilot_token)" || exit 1
